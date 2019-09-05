@@ -177,27 +177,40 @@ fn run(
     let started = std::time::Instant::now();
 
     let mut frames = 0u64..;
-    let mut elapsed = started.elapsed();
+    let mut period = started;
 
-    for _ in &mut frames {
+    let mut closed = false;
+
+    for frame in &mut frames {
         factory.maintain(families);
-        event_loop.poll_events(|_| ());
+        event_loop.poll_events(|event| {
+            match event {
+                winit::Event::WindowEvent {
+                    event: winit::WindowEvent::CloseRequested,
+                    window_id: _,
+                } => dbg!(closed = true),
+                _ => (),
+            }
+        });
         graph.run(factory, families, &mut ());
 
-        elapsed = started.elapsed();
-        if elapsed >= std::time::Duration::new(5, 0) {
+        if period.elapsed() >= std::time::Duration::new(5, 0) {
+            period = std::time::Instant::now();
+            let elapsed = started.elapsed();
+            let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + elapsed.subsec_nanos() as u64;
+            
+            log::info!(
+                "Elapsed: {:?}. Frames: {}. FPS: {}",
+                elapsed,
+                frame,
+                frame * 1_000_000_000 / elapsed_ns
+            );
+        }
+
+        if closed {
             break;
         }
     }
-
-    let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + elapsed.subsec_nanos() as u64;
-    
-    log::info!(
-        "Elapsed: {:?}. Frames: {}. FPS: {}",
-        elapsed,
-        frames.start,
-        frames.start * 1_000_000_000 / elapsed_ns
-    );
 
     graph.dispose(factory, &mut ());
     Ok(())
@@ -205,7 +218,7 @@ fn run(
 
 fn main() {
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(log::LevelFilter::Warn)
         .filter_module("worldclient", log::LevelFilter::Trace)
         .init();
 
