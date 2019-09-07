@@ -13,4 +13,5 @@ failure = "0.1"
 gfx-hal = "0.3"
 lazy_static = "1.4"
 log = "0.4"
+nalgebra = "0.18"
 rendy = { git = "https://github.com/amethyst/rendy" }

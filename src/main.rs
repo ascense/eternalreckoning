@@ -2,177 +2,15 @@ type Backend = rendy::vulkan::Backend;
 
 use rendy::{
     factory::Factory,
-    graph::render::{
-        SimpleGraphicsPipeline,
-        SimpleGraphicsPipelineDesc,
-        RenderGroupBuilder,
-    },
-    hal,
     wsi::winit,
 };
 
-lazy_static::lazy_static! {
-    static ref VERTEX: rendy::shader::SpirvShader = rendy::shader::SourceShaderInfo::new(
-        include_str!("shader.vert"),
-        "shader.vert",
-        rendy::shader::ShaderKind::Vertex,
-        rendy::shader::SourceLanguage::GLSL,
-        "main",
-    ).precompile().unwrap();
-    
-    static ref FRAGMENT: rendy::shader::SpirvShader = rendy::shader::SourceShaderInfo::new(
-        include_str!("shader.frag"),
-        "shader.frag",
-        rendy::shader::ShaderKind::Fragment,
-        rendy::shader::SourceLanguage::GLSL,
-        "main",
-    ).precompile().unwrap();
-
-    static ref SHADERS: rendy::shader::ShaderSetBuilder = rendy::shader::ShaderSetBuilder::default()
-        .with_vertex(&*VERTEX).unwrap()
-        .with_fragment(&*FRAGMENT).unwrap();
-    
-    static ref SHADER_REFLECTION: rendy::shader::SpirvReflection = SHADERS.reflect().unwrap();
-}
-
-#[derive(Debug, Default)]
-struct TriangleRenderPipelineDesc;
-
-#[derive(Debug)]
-struct TriangleRenderPipeline<B: hal::Backend> {
-    vertex: Option<rendy::resource::Escape<rendy::resource::Buffer<B>>>,
-}
-
-impl<B, T> SimpleGraphicsPipelineDesc<B, T> for TriangleRenderPipelineDesc
-where
-    B: hal::Backend,
-    T: ?Sized,
-{
-    type Pipeline = TriangleRenderPipeline<B>;
-
-    fn depth_stencil(&self) -> Option<hal::pso::DepthStencilDesc> {
-        None
-    }
-
-    fn load_shader_set(
-        &self,
-        factory: &mut Factory<B>,
-        _aux: &T,
-    ) -> rendy::shader::ShaderSet<B> {
-        SHADERS.build(factory, Default::default()).unwrap()
-    }
-
-    fn vertices(
-        &self,
-    ) -> Vec<(
-        Vec<hal::pso::Element<hal::format::Format>>,
-        hal::pso::ElemStride,
-        hal::pso::VertexInputRate,
-    )> {
-        return vec![SHADER_REFLECTION
-            .attributes_range(..)
-            .unwrap()
-            .gfx_vertex_input_desc(hal::pso::VertexInputRate::Vertex)
-        ];
-    }
-
-    fn build<'a>(
-        self,
-        _ctx: &rendy::graph::GraphContext<B>,
-        _factory: &mut Factory<B>,
-        _queue: rendy::command::QueueId,
-        _aux: &T,
-        buffers: Vec<rendy::graph::NodeBuffer>,
-        images: Vec<rendy::graph::NodeImage>,
-        set_layouts: &[rendy::resource::Handle<rendy::resource::DescriptorSetLayout<B>>],
-    ) -> Result<TriangleRenderPipeline<B>, failure::Error> {
-        assert!(buffers.is_empty());
-        assert!(images.is_empty());
-        assert!(set_layouts.is_empty());
-
-        Ok(TriangleRenderPipeline { vertex: None })
-    }
-}
-
-impl<B, T> SimpleGraphicsPipeline<B, T> for TriangleRenderPipeline<B>
-where
-    B: hal::Backend,
-    T: ?Sized,
-{
-    type Desc = TriangleRenderPipelineDesc;
-
-    fn prepare(
-        &mut self,
-        factory: &rendy::factory::Factory<B>,
-        _queue: rendy::command::QueueId,
-        _set_layouts: &[rendy::resource::Handle<rendy::resource::DescriptorSetLayout<B>>],
-        _index: usize,
-        _aux: &T,
-    ) -> rendy::graph::render::PrepareResult {
-        if self.vertex.is_none() {
-            let vbuf_size = SHADER_REFLECTION.attributes_range(..).unwrap().stride as u64 * 3;
-
-            let mut vbuf = factory
-                .create_buffer(
-                    rendy::resource::BufferInfo {
-                        size: vbuf_size,
-                        usage: hal::buffer::Usage::VERTEX,
-                    },
-                    rendy::memory::Dynamic,
-                )
-                .unwrap();
-            
-            unsafe {
-                factory
-                    .upload_visible_buffer(
-                        &mut vbuf,
-                        0,
-                        &[
-                            rendy::mesh::PosColor {
-                                position: [0.0, -0.5, 0.0].into(),
-                                color: [1.0, 0.0, 0.0, 1.0].into(),
-                            },
-                            rendy::mesh::PosColor {
-                                position: [0.5, 0.5, 0.0].into(),
-                                color: [0.0, 1.0, 0.0, 1.0].into(),
-                            },
-                            rendy::mesh::PosColor {
-                                position: [-0.5, 0.5, 0.0].into(),
-                                color: [0.0, 0.0, 1.0, 1.0].into(),
-                            },
-                        ]
-                    )
-                    .unwrap();
-            }
-
-            self.vertex = Some(vbuf);
-        }
-
-        rendy::graph::render::PrepareResult::DrawReuse
-    }
-
-    fn draw(
-        &mut self,
-        _layout: &B::PipelineLayout,
-        mut encoder: rendy::command::RenderPassEncoder<'_, B>,
-        _index: usize,
-        _aux: &T,
-    ) {
-        let vbuf = self.vertex.as_ref().unwrap();
-        unsafe {
-            encoder.bind_vertex_buffers(0, Some((vbuf.raw(), 0)));
-            encoder.draw(0..3, 0..1);
-        }
-    }
-
-    fn dispose(self, _factory: &mut rendy::factory::Factory<B>, _aux: &T) {}
-}
-
 fn run(
-    event_loop: &mut winit::EventsLoop,
+    window: &mut worldclient::window::Window,
     factory: &mut Factory<Backend>,
     families: &mut rendy::command::Families<Backend>,
-    mut graph: rendy::graph::Graph<Backend, ()>,
+    scene: &mut worldclient::scene::Scene,
+    mut graph: worldclient::renderer::RenderGraph<Backend>,
 ) -> Result<(), failure::Error> {
     let started = std::time::Instant::now();
 
@@ -181,18 +19,38 @@ fn run(
 
     let mut closed = false;
 
+    let mouse_sens = worldclient::input::MouseSensitivity::new(5f64);
+    let mut mouse_euler = worldclient::input::MouseEuler::new();
+
     for frame in &mut frames {
         factory.maintain(families);
-        event_loop.poll_events(|event| {
+        window.poll_events(|event| {
             match event {
                 winit::Event::WindowEvent {
                     event: winit::WindowEvent::CloseRequested,
                     window_id: _,
                 } => dbg!(closed = true),
+                winit::Event::DeviceEvent {
+                    event: winit::DeviceEvent::MouseMotion { delta },
+                    device_id: _,
+                } => {
+                    mouse_euler.update(delta, &mouse_sens);
+                },
                 _ => (),
             }
         });
-        graph.run(factory, families, &mut ());
+
+        let rotation = nalgebra::Rotation3::from_euler_angles(
+            mouse_euler.pitch as f32,
+            mouse_euler.yaw as f32,
+            0.0,
+        );
+        let translation = nalgebra::Translation3::new(0.0f32, 0.0f32, 10.0f32);
+        scene.camera.set_view(
+            nalgebra::Projective3::identity() * rotation.inverse() * translation
+        );
+
+        graph.run(factory, families, &scene);
 
         if period.elapsed() >= std::time::Duration::new(5, 0) {
             period = std::time::Instant::now();
@@ -212,7 +70,7 @@ fn run(
         }
     }
 
-    graph.dispose(factory, &mut ());
+    graph.dispose(factory, &scene);
     Ok(())
 }
 
@@ -223,55 +81,28 @@ fn main() {
         .init();
 
     let config: rendy::factory::Config = Default::default();
-
     let (mut factory, mut families): (Factory<Backend>, _) =
         rendy::factory::init(config).unwrap();
 
-    let mut event_loop = winit::EventsLoop::new();
-
     log::info!("Creating window...");
 
-    let window = winit::WindowBuilder::new()
-        .with_title("World Client")
-        .build(&event_loop)
-        .unwrap();
-    
-    event_loop.poll_events(|_| ());
+    let mut window = worldclient::window::Window::new();
 
     log::info!("Initializing rendering pipeline...");
 
-    let surface = factory.create_surface(&window);
+    let aspect = window.get_aspect_ratio() as f32;
+    let mut scene = worldclient::scene::Scene {
+        camera: worldclient::scene::Camera::new(aspect),
+    };
 
-    let mut graph_builder = rendy::graph::GraphBuilder::<Backend, ()>::new();
-
-    let size = window
-        .get_inner_size()
-        .unwrap()
-        .to_physical(window.get_hidpi_factor());
-
-    let color = graph_builder.create_image(
-        hal::image::Kind::D2(size.width as u32, size.height as u32, 1, 1),
-        1,
-        factory.get_surface_format(&surface),
-        Some(hal::command::ClearValue::Color([1.0, 1.0, 1.0, 1.0].into())),
+    let graph = worldclient::renderer::RenderGraph::new(
+        &mut factory,
+        &mut families,
+        &mut scene,
+        &window,
     );
-
-    let pass = graph_builder.add_node(
-        TriangleRenderPipeline::builder()
-            .into_subpass()
-            .with_color(color)
-            .into_pass(),
-    );
-
-    graph_builder.add_node(
-        rendy::graph::present::PresentNode::builder(&factory, surface, color).with_dependency(pass),
-    );
-
-    let graph = graph_builder
-        .build(&mut factory, &mut families, &mut ())
-        .unwrap();
 
     log::info!("Entering main loop");
 
-    run(&mut event_loop, &mut factory, &mut families, graph).unwrap();
+    run(&mut window, &mut factory, &mut families, &mut scene, graph).unwrap();
 }
