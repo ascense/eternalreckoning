@@ -5,7 +5,7 @@ authors = ["Henry Carlson <henry.carlson@gmail.com>"]
 edition = "2018"
 
 [features]
-default = ["rendy/vulkan"]
+default = ["rendy/vulkan", "rendy/texture-image", "rendy/texture-palette"]
 
 [dependencies]
 env_logger = "0.6"

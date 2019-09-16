@@ -15,16 +15,16 @@ use crate::scene::Scene;
 
 lazy_static::lazy_static! {
     static ref VERTEX: rendy::shader::SpirvShader = rendy::shader::SourceShaderInfo::new(
-        include_str!("shader.vert"),
-        "shader.vert",
+        include_str!("mesh.vert"),
+        "mesh.vert",
         rendy::shader::ShaderKind::Vertex,
         rendy::shader::SourceLanguage::GLSL,
         "main",
     ).precompile().unwrap();
     
     static ref FRAGMENT: rendy::shader::SpirvShader = rendy::shader::SourceShaderInfo::new(
-        include_str!("shader.frag"),
-        "shader.frag",
+        include_str!("mesh.frag"),
+        "mesh.frag",
         rendy::shader::ShaderKind::Fragment,
         rendy::shader::SourceLanguage::GLSL,
         "main",

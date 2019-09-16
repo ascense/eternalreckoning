@@ -7,7 +7,8 @@ use rendy::{
 };
 
 use crate::scene::Scene;
-use super::pipeline::TriangleRenderPipeline;
+use super::pipeline::mesh::TriangleRenderPipeline;
+use super::pipeline::ui::SpriteGraphicsPipeline;
 
 pub struct RenderGraph<B: hal::Backend> {
     graph: rendy::graph::Graph<B, Scene>,
@@ -36,15 +37,23 @@ where
             Some(hal::command::ClearValue::Color([1.0, 1.0, 1.0, 1.0].into())),
         );
 
-        let pass = graph_builder.add_node(
+        let mesh_pass = graph_builder.add_node(
             TriangleRenderPipeline::builder()
+                .into_subpass()
+                .with_color(color)
+                .into_pass(),
+        );
+        
+        let ui_pass = graph_builder.add_node(
+            SpriteGraphicsPipeline::builder()
+                .with_dependency(mesh_pass)
                 .into_subpass()
                 .with_color(color)
                 .into_pass(),
         );
 
         graph_builder.add_node(
-            rendy::graph::present::PresentNode::builder(&factory, surface, color).with_dependency(pass),
+            rendy::graph::present::PresentNode::builder(&factory, surface, color).with_dependency(ui_pass),
         );
 
         let graph = graph_builder
