@@ -6,7 +6,7 @@ use rendy::{
     hal,
 };
 
-use crate::scene::Scene;
+use super::scene::Scene;
 use super::pipeline::mesh::TriangleRenderPipeline;
 use super::pipeline::ui::SpriteGraphicsPipeline;
 

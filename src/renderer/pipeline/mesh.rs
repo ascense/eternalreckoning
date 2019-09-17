@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use rendy::{
     factory::Factory,
     graph::render::{
@@ -11,7 +13,7 @@ use rendy::{
     },
 };
 
-use crate::scene::Scene;
+use crate::renderer::scene::Scene;
 
 lazy_static::lazy_static! {
     static ref VERTEX: rendy::shader::SpirvShader = rendy::shader::SourceShaderInfo::new(
@@ -37,9 +39,9 @@ lazy_static::lazy_static! {
     static ref SHADER_REFLECTION: rendy::shader::SpirvReflection = SHADERS.reflect().unwrap();
 }
 
-const VERTEX_COUNT: usize = 15;
+const MAX_VERTEX_COUNT: usize = 10_000;
 const UNIFORM_SIZE: u64 = std::mem::size_of::<UniformArgs>() as u64;
-const VERTEX_SIZE: u64 = (std::mem::size_of::<rendy::mesh::PosColor>() * VERTEX_COUNT) as u64;
+const VERTEX_SIZE: u64 = (std::mem::size_of::<rendy::mesh::PosColor>() * MAX_VERTEX_COUNT) as u64;
 
 const fn buffer_frame_size(align: u64) -> u64 {
     ((UNIFORM_SIZE + VERTEX_SIZE - 1) / align + 1) * align
@@ -49,8 +51,10 @@ const fn uniform_offset(index: usize, align: u64) -> u64 {
     buffer_frame_size(align) * index as u64
 }
 
-const fn vertex_offset(index: usize, align: u64) -> u64 {
-    uniform_offset(index, align) + UNIFORM_SIZE
+const fn vertex_offset(index: usize, align: u64, offset: u64) -> u64 {
+    uniform_offset(index, align) +
+        UNIFORM_SIZE +
+        (std::mem::size_of::<rendy::mesh::PosColor>() as u64 * offset)
 }
 
 #[derive(Clone, Debug)]
@@ -184,76 +188,21 @@ where
                 .unwrap();
         }
 
-        unsafe {
-            factory
-                .upload_visible_buffer(
-                    &mut self.buffer,
-                    vertex_offset(index, self.align),
-                    &[
-                        rendy::mesh::PosColor {
-                            position: [0.0, -0.5, 0.0].into(),
-                            color: [1.0, 0.0, 0.0, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.5, 0.5, 0.0].into(),
-                            color: [0.0, 1.0, 0.0, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [-0.5, 0.5, 0.0].into(),
-                            color: [0.0, 0.0, 1.0, 1.0].into(),
-                        },
-                        
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, 0.0].into(),
-                            color: [0.5, 0.5, 0.5, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [-10.0, 1.0, 0.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, 10.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, 0.0].into(),
-                            color: [0.5, 0.5, 0.5, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, 10.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [10.0, 1.0, 0.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, 0.0].into(),
-                            color: [0.5, 0.5, 0.5, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [10.0, 1.0, 0.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, -10.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, 0.0].into(),
-                            color: [0.5, 0.5, 0.5, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [0.0, 1.0, -10.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                        rendy::mesh::PosColor {
-                            position: [-10.0, 1.0, 0.0].into(),
-                            color: [0.25, 0.25, 0.25, 1.0].into(),
-                        },
-                    ]
-                )
-                .unwrap();
+        let mut offset: u32 = 0;
+        for object in &scene.objects {
+            let mesh_buffer: Vec<rendy::mesh::PosColor> =
+                object.mesh.clone().try_into().unwrap();
+
+            unsafe {
+                factory
+                    .upload_visible_buffer(
+                        &mut self.buffer,
+                        vertex_offset(index, self.align, offset as u64),
+                        mesh_buffer.as_slice(),
+                    )
+                    .unwrap();
+                offset += object.mesh.len();
+            }
         }
 
         rendy::graph::render::PrepareResult::DrawReuse
@@ -264,7 +213,7 @@ where
         layout: &B::PipelineLayout,
         mut encoder: rendy::command::RenderPassEncoder<'_, B>,
         index: usize,
-        _scene: &Scene,
+        scene: &Scene,
     ) {
         unsafe {
             encoder.bind_graphics_descriptor_sets(
@@ -276,10 +225,14 @@ where
 
             encoder.bind_vertex_buffers(
                 0,
-                std::iter::once((self.buffer.raw(), vertex_offset(index, self.align)))
+                std::iter::once((self.buffer.raw(), vertex_offset(index, self.align, 0)))
             );
 
-            encoder.draw(0..(VERTEX_COUNT as u32), 0..1);
+            let mut offset: u32 = 0;
+            for object in &scene.objects {
+                encoder.draw(offset..(offset + object.mesh.len()), 0..1);
+                offset += object.mesh.len();
+            }
         }
     }
 

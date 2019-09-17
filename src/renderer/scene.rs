@@ -10,9 +10,16 @@ pub struct UI {
 }
 
 #[derive(Debug)]
+pub struct Object {
+    pub mesh: super::Mesh,
+    pub position: nalgebra::Point3<f32>,
+}
+
+#[derive(Debug)]
 pub struct Scene {
     pub camera: Camera,
     pub ui: UI,
+    pub objects: Vec<Object>,
 }
 
 impl Camera {

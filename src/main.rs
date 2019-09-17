@@ -9,7 +9,7 @@ fn run(
     window: &mut worldclient::window::Window,
     factory: &mut Factory<Backend>,
     families: &mut rendy::command::Families<Backend>,
-    scene: &mut worldclient::scene::Scene,
+    scene: &mut worldclient::renderer::scene::Scene,
     mut graph: worldclient::renderer::RenderGraph<Backend>,
 ) -> Result<(), failure::Error> {
     let started = std::time::Instant::now();
@@ -91,9 +91,62 @@ fn main() {
     log::info!("Initializing rendering pipeline...");
 
     let aspect = window.get_aspect_ratio() as f32;
-    let mut scene = worldclient::scene::Scene {
-        camera: worldclient::scene::Camera::new(aspect),
-        ui: worldclient::scene::UI::new(aspect),
+
+    let mut scene = worldclient::renderer::scene::Scene {
+        camera: worldclient::renderer::scene::Camera::new(aspect),
+        ui: worldclient::renderer::scene::UI::new(aspect),
+        objects: vec![
+            worldclient::renderer::scene::Object {
+                mesh: worldclient::renderer::mesh::MeshBuilder::new()
+                    .with_vertices(&[
+                        [0.0, -0.5, 0.0],
+                        [0.5, 0.5, 0.0],
+                        [-0.5, 0.5, 0.0],
+                    ])
+                    .with_colors(&[
+                        [1.0, 0.0, 0.0, 1.0],
+                        [0.0, 1.0, 0.0, 1.0],
+                        [0.0, 0.0, 1.0, 1.0],
+                    ])
+                    .build()
+                    .unwrap(),
+                position: nalgebra::Point3::new(0.0, 0.0, 0.0),
+            },
+            worldclient::renderer::scene::Object {
+                mesh: worldclient::renderer::mesh::MeshBuilder::new()
+                    .with_vertices(&[
+                        [0.0, 1.0, 0.0],
+                        [-10.0, 1.0, 0.0],
+                        [0.0, 1.0, 10.0],
+                        [0.0, 1.0, 0.0],
+                        [0.0, 1.0, 10.0],
+                        [10.0, 1.0, 0.0],
+                        [0.0, 1.0, 0.0],
+                        [10.0, 1.0, 0.0],
+                        [0.0, 1.0, -10.0],
+                        [0.0, 1.0, 0.0],
+                        [0.0, 1.0, -10.0],
+                        [-10.0, 1.0, 0.0],
+                    ])
+                    .with_colors(&[
+                        [0.5, 0.5, 0.5, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                        [0.5, 0.5, 0.5, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                        [0.5, 0.5, 0.5, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                        [0.5, 0.5, 0.5, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                        [0.25, 0.25, 0.25, 1.0],
+                    ])
+                    .build()
+                    .unwrap(),
+                position: nalgebra::Point3::new(0.0, 0.0, 0.0),
+            },
+        ],
     };
 
     let graph = worldclient::renderer::RenderGraph::new(
