@@ -130,8 +130,8 @@ where
             .create_buffer(
                 rendy::resource::BufferInfo {
                     size: buffer_frame_size(align) * frames as u64,
-                    usage: hal::buffer::Usage::UNIFORM
-                        | hal::buffer::Usage::VERTEX,
+                    usage: hal::buffer::Usage::UNIFORM |
+                        hal::buffer::Usage::VERTEX,
                 },
                 rendy::memory::Dynamic,
             )

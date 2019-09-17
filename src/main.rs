@@ -93,6 +93,7 @@ fn main() {
     let aspect = window.get_aspect_ratio() as f32;
     let mut scene = worldclient::scene::Scene {
         camera: worldclient::scene::Camera::new(aspect),
+        ui: worldclient::scene::UI::new(aspect),
     };
 
     let graph = worldclient::renderer::RenderGraph::new(

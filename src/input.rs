@@ -32,10 +32,8 @@ impl MouseEuler {
 
         self.yaw += delta.0 * yaw_mult;
         if self.yaw > PI {
-            dbg!(self.yaw);
             self.yaw = -PI + self.yaw % PI;
         } else if self.yaw < -PI {
-            dbg!(self.yaw);
             self.yaw = PI + self.yaw % PI;
         }
     }

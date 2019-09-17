@@ -6,6 +6,7 @@ use rendy::{
     },
     hal,
     hal::{
+        adapter::PhysicalDevice,
         device::Device,
     },
 };
@@ -38,11 +39,26 @@ lazy_static::lazy_static! {
     static ref SHADER_REFLECTION: rendy::shader::SpirvReflection = SHADERS.reflect().unwrap();
 }
 
+const VERTEX_COUNT: usize = 6;
+const UNIFORM_SIZE: u64 = std::mem::size_of::<UniformArgs>() as u64;
+const VERTEX_SIZE: u64 = (std::mem::size_of::<rendy::mesh::PosTex>() * VERTEX_COUNT) as u64;
+
+const fn buffer_frame_size(align: u64) -> u64 {
+    ((UNIFORM_SIZE + VERTEX_SIZE - 1) / align + 1) * align
+}
+
+const fn uniform_offset(index: usize, align: u64) -> u64 {
+    buffer_frame_size(align) * index as u64
+}
+
+const fn vertex_offset(index: usize, align: u64) -> u64 {
+    uniform_offset(index, align) + UNIFORM_SIZE
+}
+
 #[derive(Clone, Debug)]
 #[repr(C, align(16))]
 struct UniformArgs {
     proj: nalgebra::Matrix4<f32>,
-    view: nalgebra::Matrix4<f32>,
 }
 
 #[derive(Debug, Default)]
@@ -51,8 +67,9 @@ pub struct SpriteGraphicsPipelineDesc;
 #[derive(Debug)]
 pub struct SpriteGraphicsPipeline<B: hal::Backend> {
     texture: rendy::texture::Texture<B>,
-    vbuf: rendy::resource::Escape<rendy::resource::Buffer<B>>,
-    set: rendy::resource::Escape<rendy::resource::DescriptorSet<B>>,
+    align: u64,
+    buffer: rendy::resource::Escape<rendy::resource::Buffer<B>>,
+    sets: Vec<rendy::resource::Escape<rendy::resource::DescriptorSet<B>>>,
 }
 
 impl<B> SimpleGraphicsPipelineDesc<B, Scene> for SpriteGraphicsPipelineDesc
@@ -81,19 +98,46 @@ where
         hal::pso::VertexInputRate,
     )> {
         return vec![SHADER_REFLECTION
-            .attributes_range(..)
+            .attributes(&["position", "uv"])
             .unwrap()
             .gfx_vertex_input_desc(hal::pso::VertexInputRate::Vertex)
         ];
     }
 
     fn layout(&self) -> rendy::util::types::Layout {
-        SHADER_REFLECTION.layout().unwrap()
+        rendy::util::types::Layout {
+            sets: vec![rendy::util::types::SetLayout {
+                bindings: vec![
+                    hal::pso::DescriptorSetLayoutBinding {
+                        binding: 0,
+                        ty: hal::pso::DescriptorType::UniformBuffer,
+                        count: 1,
+                        stage_flags: hal::pso::ShaderStageFlags::GRAPHICS,
+                        immutable_samplers: false,
+                    },
+                    hal::pso::DescriptorSetLayoutBinding {
+                        binding: 1,
+                        ty: hal::pso::DescriptorType::SampledImage,
+                        count: 1,
+                        stage_flags: hal::pso::ShaderStageFlags::FRAGMENT,
+                        immutable_samplers: false,
+                    },
+                    hal::pso::DescriptorSetLayoutBinding {
+                        binding: 2,
+                        ty: hal::pso::DescriptorType::Sampler,
+                        count: 1,
+                        stage_flags: hal::pso::ShaderStageFlags::FRAGMENT,
+                        immutable_samplers: false,
+                    },
+                ],
+            }],
+            push_constants: Vec::new(),
+        }
     }
 
     fn build<'a>(
         self,
-        _ctx: &rendy::graph::GraphContext<B>,
+        ctx: &rendy::graph::GraphContext<B>,
         factory: &mut Factory<B>,
         queue: rendy::command::QueueId,
         _scene: &Scene,
@@ -139,46 +183,96 @@ where
             )
             .unwrap();
 
-        let set = factory
-            .create_descriptor_set(set_layouts[0].clone())
-            .unwrap();
-        
-        unsafe {
-            factory.device().write_descriptor_sets(vec![
-                hal::pso::DescriptorSetWrite {
-                    set: set.raw(),
-                    binding: 0,
-                    array_offset: 0,
-                    descriptors: vec![hal::pso::Descriptor::Image(
-                        texture.view().raw(),
-                        hal::image::Layout::ShaderReadOnlyOptimal,
-                    )],
-                },
-                hal::pso::DescriptorSetWrite {
-                    set: set.raw(),
-                    binding: 1,
-                    array_offset: 0,
-                    descriptors: vec![hal::pso::Descriptor::Sampler(texture.sampler().raw())],
-                },
-            ]);
-        }
+        let frames = ctx.frames_in_flight as _;
+        let align = factory
+            .physical()
+            .limits()
+            .min_uniform_buffer_offset_alignment;
 
-        let vbuf_size = SHADER_REFLECTION.attributes_range(..).unwrap().stride as u64 * 6;
-
-        let mut vbuf = factory
+        let buffer = factory
             .create_buffer(
                 rendy::resource::BufferInfo {
-                    size: vbuf_size,
-                    usage: hal::buffer::Usage::VERTEX,
+                    size: buffer_frame_size(align) * frames as u64,
+                    usage: hal::buffer::Usage::VERTEX |
+                        hal::buffer::Usage::UNIFORM,
                 },
                 rendy::memory::Dynamic,
             )
             .unwrap();
 
+        let mut sets = Vec::new();
+        for index in 0..frames {
+            let set = factory
+                .create_descriptor_set(set_layouts[0].clone())
+                .unwrap();
+
+            unsafe {
+                factory.device().write_descriptor_sets(vec![
+                    hal::pso::DescriptorSetWrite {
+                        set: set.raw(),
+                        binding: 0,
+                        array_offset: 0,
+                        descriptors: vec![hal::pso::Descriptor::Buffer(
+                            buffer.raw(),
+                            Some(uniform_offset(index, align))
+                                ..Some(uniform_offset(index, align) + UNIFORM_SIZE),
+                        )],
+                    },
+                    hal::pso::DescriptorSetWrite {
+                        set: set.raw(),
+                        binding: 1,
+                        array_offset: 0,
+                        descriptors: vec![hal::pso::Descriptor::Image(
+                            texture.view().raw(),
+                            hal::image::Layout::ShaderReadOnlyOptimal,
+                        )],
+                    },
+                    hal::pso::DescriptorSetWrite {
+                        set: set.raw(),
+                        binding: 2,
+                        array_offset: 0,
+                        descriptors: vec![hal::pso::Descriptor::Sampler(texture.sampler().raw())],
+                    },
+                ]);
+            }
+
+            sets.push(set);
+        }
+
+        Ok(SpriteGraphicsPipeline { texture, align, buffer, sets })
+    }
+}
+
+impl<B> SimpleGraphicsPipeline<B, Scene> for SpriteGraphicsPipeline<B>
+where
+    B: hal::Backend,
+{
+    type Desc = SpriteGraphicsPipelineDesc;
+
+    fn prepare(
+        &mut self,
+        factory: &rendy::factory::Factory<B>,
+        _queue: rendy::command::QueueId,
+        _set_layouts: &[rendy::resource::Handle<rendy::resource::DescriptorSetLayout<B>>],
+        index: usize,
+        scene: &Scene,
+    ) -> rendy::graph::render::PrepareResult {
+        unsafe {
+            factory
+                .upload_visible_buffer(
+                    &mut self.buffer,
+                    uniform_offset(index, self.align),
+                    &[UniformArgs {
+                        proj: scene.ui.proj.to_homogeneous(),
+                    }]
+                )
+                .unwrap();
+        }
+
         unsafe {
             factory.upload_visible_buffer(
-                &mut vbuf,
-                0,
+                &mut self.buffer,
+                vertex_offset(index, self.align),
                 &[
                     rendy::mesh::PosTex {
                         position: [-0.05, 0.9, 0.0].into(),
@@ -209,24 +303,6 @@ where
                 .unwrap();
         }
 
-        Ok(SpriteGraphicsPipeline { texture, vbuf, set })
-    }
-}
-
-impl<B> SimpleGraphicsPipeline<B, Scene> for SpriteGraphicsPipeline<B>
-where
-    B: hal::Backend,
-{
-    type Desc = SpriteGraphicsPipelineDesc;
-
-    fn prepare(
-        &mut self,
-        _factory: &rendy::factory::Factory<B>,
-        _queue: rendy::command::QueueId,
-        _set_layouts: &[rendy::resource::Handle<rendy::resource::DescriptorSetLayout<B>>],
-        _index: usize,
-        _scene: &Scene,
-    ) -> rendy::graph::render::PrepareResult {
         rendy::graph::render::PrepareResult::DrawReuse
     }
 
@@ -234,23 +310,23 @@ where
         &mut self,
         layout: &B::PipelineLayout,
         mut encoder: rendy::command::RenderPassEncoder<'_, B>,
-        _index: usize,
+        index: usize,
         _scene: &Scene,
     ) {
         unsafe {
             encoder.bind_graphics_descriptor_sets(
                 layout,
                 0,
-                std::iter::once(self.set.raw()),
+                Some(self.sets[index].raw()),
                 std::iter::empty::<u32>(),
             );
 
             encoder.bind_vertex_buffers(
                 0,
-                Some((self.vbuf.raw(), 0))
+                std::iter::once((self.buffer.raw(), vertex_offset(index, self.align)))
             );
 
-            encoder.draw(0..6, 0..1);
+            encoder.draw(0..(VERTEX_COUNT as u32), 0..1);
         }
     }
 
