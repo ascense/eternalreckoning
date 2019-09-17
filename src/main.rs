@@ -19,7 +19,7 @@ fn run(
 
     let mut closed = false;
 
-    let mouse_sens = worldclient::input::MouseSensitivity::new(5f64);
+    let mouse_sens = worldclient::input::MouseSensitivity::new(3.15);
     let mut mouse_euler = worldclient::input::MouseEuler::new();
 
     for frame in &mut frames {

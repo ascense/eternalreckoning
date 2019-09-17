@@ -37,7 +37,7 @@ lazy_static::lazy_static! {
     static ref SHADER_REFLECTION: rendy::shader::SpirvReflection = SHADERS.reflect().unwrap();
 }
 
-const VERTEX_COUNT: usize = 3;
+const VERTEX_COUNT: usize = 15;
 const UNIFORM_SIZE: u64 = std::mem::size_of::<UniformArgs>() as u64;
 const VERTEX_SIZE: u64 = (std::mem::size_of::<rendy::mesh::PosColor>() * VERTEX_COUNT) as u64;
 
@@ -75,10 +75,6 @@ where
     B: hal::Backend,
 {
     type Pipeline = TriangleRenderPipeline<B>;
-
-    fn depth_stencil(&self) -> Option<hal::pso::DepthStencilDesc> {
-        None
-    }
 
     fn load_shader_set(
         &self,
@@ -205,6 +201,55 @@ where
                         rendy::mesh::PosColor {
                             position: [-0.5, 0.5, 0.0].into(),
                             color: [0.0, 0.0, 1.0, 1.0].into(),
+                        },
+                        
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, 0.0].into(),
+                            color: [0.5, 0.5, 0.5, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [-10.0, 1.0, 0.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, 10.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, 0.0].into(),
+                            color: [0.5, 0.5, 0.5, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, 10.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [10.0, 1.0, 0.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, 0.0].into(),
+                            color: [0.5, 0.5, 0.5, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [10.0, 1.0, 0.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, -10.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, 0.0].into(),
+                            color: [0.5, 0.5, 0.5, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [0.0, 1.0, -10.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
+                        },
+                        rendy::mesh::PosColor {
+                            position: [-10.0, 1.0, 0.0].into(),
+                            color: [0.25, 0.25, 0.25, 1.0].into(),
                         },
                     ]
                 )

@@ -28,19 +28,32 @@ where
         
         let mut graph_builder = rendy::graph::GraphBuilder::<B, Scene>::new();
 
-        let size = window.get_size();
+        let win_size = window.get_size();
+        let win_kind = hal::image::Kind::D2(win_size.width as u32, win_size.height as u32, 1, 1);
         
         let color = graph_builder.create_image(
-            hal::image::Kind::D2(size.width as u32, size.height as u32, 1, 1),
+            win_kind,
             1,
             factory.get_surface_format(&surface),
-            Some(hal::command::ClearValue::Color([1.0, 1.0, 1.0, 1.0].into())),
+            Some(hal::command::ClearValue::Color(
+                [1.0, 1.0, 1.0, 1.0].into(),
+            )),
+        );
+
+        let depth = graph_builder.create_image(
+            win_kind,
+            1,
+            hal::format::Format::D16Unorm,
+            Some(hal::command::ClearValue::DepthStencil(
+                hal::command::ClearDepthStencil(1.0, 0),
+            )),
         );
 
         let mesh_pass = graph_builder.add_node(
             TriangleRenderPipeline::builder()
                 .into_subpass()
                 .with_color(color)
+                .with_depth_stencil(depth)
                 .into_pass(),
         );
         
