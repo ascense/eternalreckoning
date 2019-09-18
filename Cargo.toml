@@ -8,6 +8,7 @@ edition = "2018"
 default = ["rendy/vulkan", "rendy/texture-image", "rendy/texture-palette"]
 
 [dependencies]
+bitflags = "1.1"
 env_logger = "0.6"
 failure = "0.1"
 gfx-hal = "0.3"

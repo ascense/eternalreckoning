@@ -92,56 +92,36 @@ fn main() {
 
     let aspect = window.get_aspect_ratio() as f32;
 
+    let marker_reader = std::io::BufReader::new(
+        std::fs::File::open(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/marker.wc1"
+        ))
+        .unwrap()
+    );
+
+    let floor_reader = std::io::BufReader::new(
+        std::fs::File::open(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/floor.wc1"
+        ))
+        .unwrap()
+    );
+
     let mut scene = worldclient::renderer::scene::Scene {
         camera: worldclient::renderer::scene::Camera::new(aspect),
         ui: worldclient::renderer::scene::UI::new(aspect),
         objects: vec![
             worldclient::renderer::scene::Object {
-                mesh: worldclient::renderer::mesh::MeshBuilder::new()
-                    .with_vertices(&[
-                        [0.0, -0.5, 0.0],
-                        [0.5, 0.5, 0.0],
-                        [-0.5, 0.5, 0.0],
-                    ])
-                    .with_colors(&[
-                        [1.0, 0.0, 0.0, 1.0],
-                        [0.0, 1.0, 0.0, 1.0],
-                        [0.0, 0.0, 1.0, 1.0],
-                    ])
+                mesh: worldclient::loaders::mesh_from_wc1(marker_reader)
+                    .unwrap()
                     .build()
                     .unwrap(),
                 position: nalgebra::Point3::new(0.0, 0.0, 0.0),
             },
             worldclient::renderer::scene::Object {
-                mesh: worldclient::renderer::mesh::MeshBuilder::new()
-                    .with_vertices(&[
-                        [0.0, 1.0, 0.0],
-                        [-10.0, 1.0, 0.0],
-                        [0.0, 1.0, 10.0],
-                        [0.0, 1.0, 0.0],
-                        [0.0, 1.0, 10.0],
-                        [10.0, 1.0, 0.0],
-                        [0.0, 1.0, 0.0],
-                        [10.0, 1.0, 0.0],
-                        [0.0, 1.0, -10.0],
-                        [0.0, 1.0, 0.0],
-                        [0.0, 1.0, -10.0],
-                        [-10.0, 1.0, 0.0],
-                    ])
-                    .with_colors(&[
-                        [0.5, 0.5, 0.5, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                        [0.5, 0.5, 0.5, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                        [0.5, 0.5, 0.5, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                        [0.5, 0.5, 0.5, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                        [0.25, 0.25, 0.25, 1.0],
-                    ])
+                mesh: worldclient::loaders::mesh_from_wc1(floor_reader)
+                    .unwrap()
                     .build()
                     .unwrap(),
                 position: nalgebra::Point3::new(0.0, 0.0, 0.0),
