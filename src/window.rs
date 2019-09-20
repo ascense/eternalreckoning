@@ -1,29 +1,26 @@
 use rendy::wsi::winit;
 
 pub struct Window {
-    window: winit::Window,
-    event_loop: winit::EventsLoop,
+    window: winit::window::Window,
+    event_loop: winit::event_loop::EventLoop<()>,
 }
 
 impl Window {
     pub fn new() -> Window {
-        let mut event_loop = winit::EventsLoop::new();
+        let event_loop = winit::event_loop::EventLoop::new();
 
-        let window = winit::WindowBuilder::new()
+        let window = winit::window::WindowBuilder::new()
             .with_title("World Client")
             .build(&event_loop)
             .unwrap();
 
-        event_loop.poll_events(|_| ());
-        
         Window { window, event_loop }
     }
 
     pub fn get_size(&self) -> winit::dpi::PhysicalSize {
         self.window
-            .get_inner_size()
-            .unwrap()
-            .to_physical(self.window.get_hidpi_factor())
+            .inner_size()
+            .to_physical(self.window.hidpi_factor())
     }
 
     pub fn get_aspect_ratio(&self) -> f64 {
@@ -42,10 +39,10 @@ impl Window {
         factory.create_surface(&self.window)
     }
 
-    pub fn poll_events<F>(&mut self, callback: F)
+    pub fn run<F>(self, event_handler: F)
     where
-        F: FnMut(winit::Event),
+        F: 'static + FnMut(winit::event::Event<()>, &winit::event_loop::EventLoopWindowTarget<()>, &mut winit::event_loop::ControlFlow),
     {
-        self.event_loop.poll_events(callback);
+        self.event_loop.run(event_handler);
     }
 }

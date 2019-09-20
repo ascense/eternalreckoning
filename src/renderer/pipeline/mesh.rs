@@ -115,7 +115,7 @@ where
         buffers: Vec<rendy::graph::NodeBuffer>,
         images: Vec<rendy::graph::NodeImage>,
         set_layouts: &[rendy::resource::Handle<rendy::resource::DescriptorSetLayout<B>>],
-    ) -> Result<TriangleRenderPipeline<B>, failure::Error> {
+    ) -> Result<TriangleRenderPipeline<B>, hal::pso::CreationError> {
         assert!(buffers.is_empty());
         assert!(images.is_empty());
         assert_eq!(set_layouts.len(), 1);
