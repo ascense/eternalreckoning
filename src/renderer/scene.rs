@@ -12,7 +12,7 @@ pub struct UI {
 #[derive(Debug)]
 pub struct Object {
     pub mesh: super::Mesh,
-    pub position: nalgebra::Point3<f32>,
+    pub position: nalgebra::Transform3<f32>,
 }
 
 #[derive(Debug)]

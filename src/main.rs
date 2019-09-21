@@ -43,9 +43,10 @@ fn run(
                     mouse_euler.yaw as f32,
                     0.0,
                 );
+                let position = nalgebra::Translation3::new(0.0f32, -1.0f32, 0.0f32);
                 let translation = nalgebra::Translation3::new(0.0f32, 0.0f32, 10.0f32);
                 scene.camera.set_view(
-                    nalgebra::Projective3::identity() * rotation.inverse() * translation
+                    nalgebra::Projective3::identity() * position * rotation.inverse() * translation
                 );
 
                 factory.maintain(&mut families);
@@ -122,14 +123,16 @@ fn main() {
                     .unwrap()
                     .build()
                     .unwrap(),
-                position: nalgebra::Point3::new(0.0, 0.0, 0.0),
+                position: nalgebra::Transform3::identity() *
+                    nalgebra::Translation3::new(0.0, 0.0, 0.0),
             },
             worldclient::renderer::scene::Object {
                 mesh: worldclient::loaders::mesh_from_wc1(floor_reader)
                     .unwrap()
                     .build()
                     .unwrap(),
-                position: nalgebra::Point3::new(0.0, 0.0, 0.0),
+                position: nalgebra::Transform3::identity() *
+                    nalgebra::Translation3::new(0.0, 0.0, 0.0),
             },
         ],
     };

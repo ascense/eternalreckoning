@@ -43,10 +43,12 @@ const MAX_VERTEX_COUNT: usize = 1024;
 const MAX_OBJECT_COUNT: usize = 32;
 const UNIFORM_SIZE: u64 = std::mem::size_of::<UniformArgs>() as u64;
 const VERTEX_SIZE: u64 = (std::mem::size_of::<rendy::mesh::PosColor>() * MAX_VERTEX_COUNT) as u64;
-const INDIRECT_SIZE: u64 = (std::mem::size_of::<rendy::command::DrawIndexedCommand>() * MAX_OBJECT_COUNT) as u64;
+const MODEL_SIZE: u64 = (std::mem::size_of::<InstanceArgs>() * MAX_OBJECT_COUNT) as u64;
+const INDIRECT_COMMAND_SIZE: u64 = std::mem::size_of::<rendy::command::DrawIndexedCommand>() as u64;
+const INDIRECT_SIZE: u64 = INDIRECT_COMMAND_SIZE * MAX_OBJECT_COUNT as u64;
 
 const fn buffer_frame_size(align: u64) -> u64 {
-    ((UNIFORM_SIZE + VERTEX_SIZE + INDIRECT_SIZE - 1) / align + 1) * align
+    ((UNIFORM_SIZE + VERTEX_SIZE + MODEL_SIZE + INDIRECT_SIZE - 1) / align + 1) * align
 }
 
 const fn uniform_offset(index: usize, align: u64) -> u64 {
@@ -59,10 +61,16 @@ const fn vertex_offset(index: usize, align: u64, offset: u64) -> u64 {
         (std::mem::size_of::<rendy::mesh::PosColor>() as u64 * offset)
 }
 
-const fn indirect_offset(index: usize, align: u64, offset: u64) -> u64 {
+const fn models_offset(index: usize, align: u64, offset: u64) -> u64 {
     vertex_offset(index, align, 0) +
         VERTEX_SIZE +
-        (std::mem::size_of::<rendy::command::DrawIndexedCommand>() as u64 * offset)
+        (std::mem::size_of::<InstanceArgs>() as u64 * offset)
+}
+
+const fn indirect_offset(index: usize, align: u64, offset: u64) -> u64 {
+    models_offset(index, align, 0) +
+        MODEL_SIZE +
+        INDIRECT_COMMAND_SIZE * offset
 }
 
 #[derive(Clone, Debug)]
@@ -70,6 +78,12 @@ const fn indirect_offset(index: usize, align: u64, offset: u64) -> u64 {
 struct UniformArgs {
     proj: nalgebra::Matrix4<f32>,
     view: nalgebra::Matrix4<f32>,
+}
+
+#[derive(Clone, Debug)]
+#[repr(C, align(16))]
+struct InstanceArgs {
+    model: nalgebra::Transform3<f32>,
 }
 
 #[derive(Debug, Default)]
@@ -103,10 +117,15 @@ where
         hal::pso::ElemStride,
         hal::pso::VertexInputRate,
     )> {
-        return vec![SHADER_REFLECTION
-            .attributes(&["position", "color"])
-            .unwrap()
-            .gfx_vertex_input_desc(hal::pso::VertexInputRate::Vertex)
+        return vec![
+            SHADER_REFLECTION
+                .attributes(&["position", "color"])
+                .unwrap()
+                .gfx_vertex_input_desc(hal::pso::VertexInputRate::Vertex),
+            SHADER_REFLECTION
+                .attributes_range(2..6)
+                .unwrap()
+                .gfx_vertex_input_desc(hal::pso::VertexInputRate::Instance(1)),
         ];
     }
 
@@ -214,12 +233,21 @@ where
                 factory
                     .upload_visible_buffer(
                         &mut self.buffer,
+                        models_offset(index, self.align, object_i as u64),
+                        &[InstanceArgs {
+                            model: object.position,
+                        }],
+                    )
+                    .unwrap();
+                factory
+                    .upload_visible_buffer(
+                        &mut self.buffer,
                         indirect_offset(index, self.align, object_i as u64),
                         &[rendy::command::DrawCommand {
                             vertex_count: object.mesh.len(),
                             instance_count: 1,
                             first_vertex: offset as u32,
-                            first_instance: 0,
+                            first_instance: object_i as u32,
                         }],
                     )
                     .unwrap();
@@ -250,11 +278,16 @@ where
                 std::iter::once((self.buffer.raw(), vertex_offset(index, self.align, 0)))
             );
 
+            encoder.bind_vertex_buffers(
+                1,
+                std::iter::once((self.buffer.raw(), models_offset(index, self.align, 0)))
+            );
+
             encoder.draw_indirect(
                 self.buffer.raw(),
                 indirect_offset(index, self.align, 0),
                 scene.objects.len() as u32,
-                std::mem::size_of::<rendy::command::DrawIndexedCommand>() as u32,
+                INDIRECT_COMMAND_SIZE as u32,
             );
         }
     }
