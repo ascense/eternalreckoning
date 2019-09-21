@@ -39,12 +39,14 @@ lazy_static::lazy_static! {
     static ref SHADER_REFLECTION: rendy::shader::SpirvReflection = SHADERS.reflect().unwrap();
 }
 
-const MAX_VERTEX_COUNT: usize = 10_000;
+const MAX_VERTEX_COUNT: usize = 1024;
+const MAX_OBJECT_COUNT: usize = 32;
 const UNIFORM_SIZE: u64 = std::mem::size_of::<UniformArgs>() as u64;
 const VERTEX_SIZE: u64 = (std::mem::size_of::<rendy::mesh::PosColor>() * MAX_VERTEX_COUNT) as u64;
+const INDIRECT_SIZE: u64 = (std::mem::size_of::<rendy::command::DrawIndexedCommand>() * MAX_OBJECT_COUNT) as u64;
 
 const fn buffer_frame_size(align: u64) -> u64 {
-    ((UNIFORM_SIZE + VERTEX_SIZE - 1) / align + 1) * align
+    ((UNIFORM_SIZE + VERTEX_SIZE + INDIRECT_SIZE - 1) / align + 1) * align
 }
 
 const fn uniform_offset(index: usize, align: u64) -> u64 {
@@ -55,6 +57,12 @@ const fn vertex_offset(index: usize, align: u64, offset: u64) -> u64 {
     uniform_offset(index, align) +
         UNIFORM_SIZE +
         (std::mem::size_of::<rendy::mesh::PosColor>() as u64 * offset)
+}
+
+const fn indirect_offset(index: usize, align: u64, offset: u64) -> u64 {
+    vertex_offset(index, align, 0) +
+        VERTEX_SIZE +
+        (std::mem::size_of::<rendy::command::DrawIndexedCommand>() as u64 * offset)
 }
 
 #[derive(Clone, Debug)]
@@ -131,7 +139,8 @@ where
                 rendy::resource::BufferInfo {
                     size: buffer_frame_size(align) * frames as u64,
                     usage: hal::buffer::Usage::UNIFORM |
-                        hal::buffer::Usage::VERTEX,
+                        hal::buffer::Usage::VERTEX |
+                        hal::buffer::Usage::INDIRECT,
                 },
                 rendy::memory::Dynamic,
             )
@@ -189,7 +198,8 @@ where
         }
 
         let mut offset: u32 = 0;
-        for object in &scene.objects {
+        for object_i in 0..scene.objects.len() {
+            let object = &scene.objects[object_i];
             let mesh_buffer: Vec<rendy::mesh::PosColor> =
                 object.mesh.clone().try_into().unwrap();
 
@@ -199,6 +209,18 @@ where
                         &mut self.buffer,
                         vertex_offset(index, self.align, offset as u64),
                         mesh_buffer.as_slice(),
+                    )
+                    .unwrap();
+                factory
+                    .upload_visible_buffer(
+                        &mut self.buffer,
+                        indirect_offset(index, self.align, object_i as u64),
+                        &[rendy::command::DrawCommand {
+                            vertex_count: object.mesh.len(),
+                            instance_count: 1,
+                            first_vertex: offset as u32,
+                            first_instance: 0,
+                        }],
                     )
                     .unwrap();
                 offset += object.mesh.len();
@@ -228,11 +250,12 @@ where
                 std::iter::once((self.buffer.raw(), vertex_offset(index, self.align, 0)))
             );
 
-            let mut offset: u32 = 0;
-            for object in &scene.objects {
-                encoder.draw(offset..(offset + object.mesh.len()), 0..1);
-                offset += object.mesh.len();
-            }
+            encoder.draw_indirect(
+                self.buffer.raw(),
+                indirect_offset(index, self.align, 0),
+                scene.objects.len() as u32,
+                std::mem::size_of::<rendy::command::DrawIndexedCommand>() as u32,
+            );
         }
     }
 
