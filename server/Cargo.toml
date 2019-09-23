@@ -1,0 +1,20 @@
+[package]
+name = "eternalreckoning-server"
+version = "0.1.0"
+authors = ["Henry Carlson <henry.carlson@gmail.com>"]
+edition = "2018"
+
+[features]
+default = [
+    "uuid/v4",
+]
+
+[dependencies]
+eternalreckoning-core = { version = "0.1.0", path = "../core" }
+
+futures = "0.1"
+nalgebra = "0.18"
+specs = "0.15"
+tokio = "0.1"
+tokio-codec = "0.1"
+uuid = "0.7"
