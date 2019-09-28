@@ -5,4 +5,8 @@ authors = ["Henry Carlson <henry.carlson@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+failure = "0.1"
+failure_derive = "0.1"
+serde = { version = "1.0", features = ["derive"] }
 specs = "0.15"
+toml = "0.5"
