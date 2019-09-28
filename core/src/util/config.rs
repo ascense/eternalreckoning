@@ -11,8 +11,11 @@ pub enum ConfigurationError {
     InvalidArguments,
     #[fail(display = "malformed configuration: {}", _0)]
     MalformedData(#[cause] toml::de::Error),
-    #[fail(display = "unable to read configuration file: {}", _0)]
-    IoError(#[cause] std::io::Error),
+    #[fail(display = "unable to read configuration file: {}", path)]
+    IoError {
+        #[cause] cause: std::io::Error,
+        path: String,
+    },
 }
 
 pub struct Config<T> {
@@ -32,15 +35,21 @@ where
         Ok(Config { data: config })
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P)
+    pub fn from_file(path: &String)
         -> Result<Config<T>, ConfigurationError>
     {
         let mut buffer = String::new();
 
         File::open(path)
-            .map_err(|e| ConfigurationError::IoError(e))?
+            .map_err(|e| ConfigurationError::IoError {
+                cause: e,
+                path: path.clone(),
+            })?
             .read_to_string(&mut buffer)
-            .map_err(|e| ConfigurationError::IoError(e))?;
+            .map_err(|e| ConfigurationError::IoError {
+                cause: e,
+                path: path.clone(),
+            })?;
 
         Config::from_str(&buffer)
     }

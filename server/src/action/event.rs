@@ -5,6 +5,10 @@ pub enum ActionEvent {
     MovementEvent(MovementEvent),
 }
 
+pub enum Update {
+    ConnectionEvent(ConnectionEvent),
+}
+
 pub enum ConnectionEvent {
     ClientConnected(Uuid),
     ClientDisconnected(Uuid),
