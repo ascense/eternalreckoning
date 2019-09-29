@@ -27,8 +27,8 @@ impl<'a> System<'a> for Connections {
                 ActionEvent::ConnectionEvent(ref event_data) => {
                     match event_data {
                         ConnectionEvent::ClientConnected(uuid) => {
-                            println!("Client connected: {:?}", uuid);
-                            
+                            log::info!("Client connected: {:?}", uuid);
+
                             let client = entities.create();
 
                             clients.insert(client, Client(uuid.clone()));
@@ -37,14 +37,8 @@ impl<'a> System<'a> for Connections {
                             ));
                         },
                         ConnectionEvent::ClientDisconnected(uuid) => {
-                            println!("Client disconnected: {:?}", uuid);
-                            /*
-                            for client in (&client).join() {
-                                if client.0 == uuid {
-                                    entities.destroy(client);
-                                }
-                            }
-                            */
+                            log::info!("Client disconnected: {:?}", uuid);
+                            // TODO: drop client entity
                         },
                     };
                 },
