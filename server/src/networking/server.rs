@@ -20,8 +20,8 @@ use uuid::Uuid;
 
 use eternalreckoning_core::net::{
     codec::EternalReckoningCodec,
-    packet::{
-        Packet,
+    operation::{
+        self,
         Operation,
     },
 };
@@ -125,9 +125,9 @@ impl ClientReader {
         }
     }
 
-    fn await_connection_request(&mut self, packet: &Packet) -> Result<(), Error> {
-        match packet.operation {
-            Operation::ConnectReq => {
+    fn await_connection_request(&mut self, packet: &Operation) -> Result<(), Error> {
+        match packet {
+            Operation::ClConnectMessage(_) => {
                 self.state = ClientReaderState::Connected;
                 self.event_tx.send(ActionEvent::ConnectionEvent(
                     ConnectionEvent::ClientConnected(self.uuid)
@@ -139,13 +139,27 @@ impl ClientReader {
             },
             _ => Err(failure::format_err!(
                 "unexpected client message: {}",
-                packet.operation
+                packet
             )),
         }
     }
 
-    fn connected(&self, packet: &Packet) -> Result<(), Error> {
-        Ok(())
+    fn connected(&mut self, packet: &Operation) -> Result<(), Error> {
+        match packet {
+            Operation::ClMoveSetPosition(data) => {
+                self.event_tx.send(ActionEvent::MovementEvent(
+                    crate::action::event::MovementEvent {
+                        uuid: self.uuid,
+                        position: data.pos,
+                    }
+                ));
+                Ok(())
+            },
+            _ => Err(failure::format_err!(
+                "unexpected client message: {}",
+                packet
+            )),
+        }
     }
 }
 
@@ -167,11 +181,8 @@ impl Future for ClientReader {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<(), Error> {
-        log::trace!("reader poll");
-
         while let Async::Ready(frame) = self.frames.poll()? {
             if let Some(packet) = frame {
-                log::trace!("reader packet");
                 match self.state {
                     ClientReaderState::AwaitConnectionRequest => self.await_connection_request(&packet)?,
                     ClientReaderState::Connected => self.connected(&packet)?,
@@ -236,9 +247,9 @@ impl Future for ClientWriter {
                 ClientWriterState::Connected => {
                     match self.rx.poll().unwrap() {
                         Async::Ready(Some(_)) => {
-                            self.frames.start_send(Packet {
-                                operation: Operation::ConnectRes,
-                            });
+                            self.frames.start_send(Operation::SvConnectResponse(
+                                operation::SvConnectResponse
+                            ));
                             self.state = ClientWriterState::Sending;
                         },
                         _ => break,
