@@ -8,6 +8,7 @@ use failure::Error;
 use failure::format_err;
 
 use eternalreckoning_core::util::config::Config;
+use eternalreckoning_core::util::logging;
 
 pub struct Bootstrap {
     pub args: Vec<String>,
@@ -28,7 +29,7 @@ fn initialize(bootstrap: Bootstrap)
     let config = get_configuration(bootstrap)?;
     let config = config.data;
 
-    util::logging::configure(&config.logging)?;
+    logging::configure(&config.logging, "eternalreckoning_server")?;
 
     Ok(config)
 }
