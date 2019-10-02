@@ -5,8 +5,13 @@ pub enum ActionEvent {
     MovementEvent(MovementEvent),
 }
 
-pub enum Update {
-    ConnectionEvent(ConnectionEvent),
+pub struct Update {
+    pub uuid: Uuid,
+    pub event: UpdateEvent,
+}
+
+pub enum UpdateEvent {
+    MovementEvent(MovementEvent),
 }
 
 pub enum ConnectionEvent {

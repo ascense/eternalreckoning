@@ -5,6 +5,7 @@ use std::sync::mpsc::{
 };
 
 use failure::Error;
+use futures::sync::mpsc::unbounded;
 
 use crate::game::build_simulation;
 use crate::networking::Server;
@@ -28,19 +29,19 @@ impl Default for ServerConfig {
 
 pub fn main(config: Config) -> Result<(), Error> {
     let (event_tx, event_rx) = channel();
+    let (update_tx, update_rx) = unbounded();
 
     let addr = config.server.bind_address.clone();
     thread::spawn(move || {
         let server = Server::new();
-
-        server.run(&addr, event_tx);
+        server.run(&addr, update_rx, event_tx);
     });
 
     let tick_length = Duration::from_millis(
         1000 / config.server.tick_rate
     );
 
-    let mut game = build_simulation();
+    let mut game = build_simulation(update_tx);
     game.run(event_rx, tick_length);
 
     Ok(())

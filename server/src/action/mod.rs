@@ -4,4 +4,5 @@ pub use event::{
     ActionEvent,
     ConnectionEvent,
     MovementEvent,
+    Update,
 };

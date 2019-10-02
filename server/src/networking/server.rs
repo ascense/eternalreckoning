@@ -1,13 +1,10 @@
 use std::sync::mpsc::{
-    Receiver,
     Sender,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use bytes::Bytes;
-use failure::Error;
-use futures::future::Either;
+use failure::{Error, format_err};
 use futures::sync::mpsc;
 use tokio::io;
 use tokio::net::{
@@ -26,13 +23,13 @@ use eternalreckoning_core::net::{
     },
 };
 use crate::action::event::{
+    self,
     ActionEvent,
-    ConnectionEvent,
     Update,
 };
 
-type Tx = mpsc::UnboundedSender<Bytes>;
-type Rx = mpsc::UnboundedReceiver<Bytes>;
+type Tx = mpsc::UnboundedSender<Operation>;
+type Rx = mpsc::UnboundedReceiver<Operation>;
 
 pub struct Server;
 
@@ -45,12 +42,40 @@ impl Server {
         Server {}
     }
 
-    pub fn run(self, address: &String, sender: Sender<ActionEvent>) {
+    pub fn run(
+        self,
+        address: &String,
+        update_rx: mpsc::UnboundedReceiver<Update>,
+        sender: Sender<ActionEvent>
+    )
+    {
         let addr = address.parse().unwrap();
         let listener = TcpListener::bind(&addr).unwrap();
         log::info!("Listening on: {}", addr);
 
         let state = Arc::new(Mutex::new(Shared::new()));
+
+        let multiplex_state = state.clone();
+        let multiplex = update_rx
+            .for_each(move |update| {
+                let op = match update.event {
+                    event::UpdateEvent::MovementEvent(data) => {
+                        Operation::ClMoveSetPosition(
+                            operation::ClMoveSetPosition {
+                                pos: data.position,
+                            }
+                        )
+                    },
+                };
+
+                multiplex_state.lock().unwrap()
+                    .clients.get(&update.uuid).unwrap()
+                        .unbounded_send(op).map_err(|err| {
+                            log::error!("Failed to send update to clients: {:?}", err);
+                        });
+
+                Ok(())
+            });
 
         let server = listener.incoming()
             .for_each(move |socket| {
@@ -60,8 +85,8 @@ impl Server {
             .map_err(|err| {
                 println!("accept error = {:?}", err);
             });
-        
-        tokio::run(server);
+
+        tokio::run(server.join(multiplex).map(|_| {}));
     }
 }
 
@@ -130,11 +155,13 @@ impl ClientReader {
             Operation::ClConnectMessage(_) => {
                 self.state = ClientReaderState::Connected;
                 self.event_tx.send(ActionEvent::ConnectionEvent(
-                    ConnectionEvent::ClientConnected(self.uuid)
+                    event::ConnectionEvent::ClientConnected(self.uuid)
                 ))?;
                 self.shared.lock().unwrap()
                     .clients.get(&self.uuid).unwrap()
-                        .unbounded_send(Bytes::from("a"))?;
+                        .send(Operation::SvConnectResponse(
+                            operation::SvConnectResponse {}
+                        ));
                 Ok(())
             },
             _ => Err(failure::format_err!(
@@ -169,7 +196,7 @@ impl Drop for ClientReader {
             ClientReaderState::AwaitConnectionRequest => (),
             _ => {
                 self.event_tx.send(ActionEvent::ConnectionEvent(
-                    ConnectionEvent::ClientDisconnected(self.uuid)
+                    event::ConnectionEvent::ClientDisconnected(self.uuid)
                 ));
             }
         };
@@ -245,11 +272,9 @@ impl Future for ClientWriter {
                     self.state = ClientWriterState::Connected;
                 },
                 ClientWriterState::Connected => {
-                    match self.rx.poll().unwrap() {
-                        Async::Ready(Some(_)) => {
-                            self.frames.start_send(Operation::SvConnectResponse(
-                                operation::SvConnectResponse
-                            ));
+                    match self.rx.poll().map_err(|_| format_err!("reader disconnected"))? {
+                        Async::Ready(Some(op)) => {
+                            self.frames.start_send(op)?;
                             self.state = ClientWriterState::Sending;
                         },
                         _ => break,
