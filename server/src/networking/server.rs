@@ -60,10 +60,14 @@ impl Server {
             .for_each(move |update| {
                 let op = match update.event {
                     event::UpdateEvent::MovementEvent(data) => {
-                        Operation::ClMoveSetPosition(
-                            operation::ClMoveSetPosition {
-                                pos: data.position,
+                        let updates = vec![
+                            operation::EntityUpdate {
+                                uuid: data.uuid,
+                                position: data.position,
                             }
+                        ];
+                        Operation::SvUpdateWorld(
+                            operation::SvUpdateWorld { updates }
                         )
                     },
                 };
@@ -277,13 +281,11 @@ impl Future for ClientWriter {
                             self.frames.start_send(op)?;
                             self.state = ClientWriterState::Sending;
                         },
-                        _ => break,
+                        _ => return Ok(Async::NotReady),
                     }
                 }
             }
         }
-
-        Ok(Async::NotReady)
     }
 }
 

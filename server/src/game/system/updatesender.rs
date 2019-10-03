@@ -26,6 +26,10 @@ impl<'a> System<'a> for UpdateSender {
 
         for (client, pos) in (&clients, &pos).join() {
             for receiver in clients.join() {
+                if receiver.0 == client.0 {
+                    continue;
+                }
+
                 self.sender.send(
                     Update {
                         uuid: receiver.0,

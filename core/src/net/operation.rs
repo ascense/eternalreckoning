@@ -3,6 +3,9 @@ use std::fmt::{
     Formatter,
 };
 
+use uuid::Uuid;
+
+#[derive(Clone)]
 pub enum Operation {
     ClConnectMessage(ClConnectMessage),
     SvConnectResponse(SvConnectResponse),
@@ -21,17 +24,24 @@ impl Display for Operation {
     }
 }
 
+#[derive(Clone)]
 pub struct ClConnectMessage;
+
+#[derive(Clone)]
 pub struct SvConnectResponse;
 
+#[derive(Clone)]
 pub struct ClMoveSetPosition {
     pub pos: nalgebra::Point3<f64>,
 }
 
+#[derive(Clone)]
 pub struct SvUpdateWorld {
     pub updates: Vec<EntityUpdate>,
 }
 
-pub enum EntityUpdate {
-    EntityMoved(nalgebra::Point3<f64>),
+#[derive(Clone)]
+pub struct EntityUpdate {
+    pub uuid: Uuid,
+    pub position: nalgebra::Point3<f64>,
 }

@@ -38,7 +38,13 @@ impl<'a> System<'a> for Connections {
                         },
                         ConnectionEvent::ClientDisconnected(uuid) => {
                             log::info!("Client disconnected: {:?}", uuid);
-                            // TODO: drop client entity
+
+                            for (entity, client) in (&entities, &clients).join() {
+                                if &client.0 == uuid {
+                                    entities.delete(entity);
+                                    break;
+                                }
+                            }
                         },
                     };
                 },

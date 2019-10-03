@@ -1,7 +1,8 @@
 use bytes::{Buf, BufMut, BytesMut};
-use tokio::codec::{Decoder, Encoder};
 use failure::Error;
 use failure_derive::Fail;
+use tokio::codec::{Decoder, Encoder};
+use uuid::Uuid;
 
 use super::operation::{
     self,
@@ -92,6 +93,19 @@ impl EternalReckoningCodec {
         buf: &mut BytesMut,
     ) -> Result<(), Error>
     {
+        // 16 bytes for UUID + 24 bytes for position
+        buf.reserve(4 + data.updates.len() * (16 + 24));
+
+        buf.put_u32_le(data.updates.len() as u32);
+        for entity in &data.updates {
+            for byte in entity.uuid.as_bytes() {
+                buf.put_u8(*byte);
+            }
+            buf.put_f64_le(entity.position.x);
+            buf.put_f64_le(entity.position.y);
+            buf.put_f64_le(entity.position.z);
+        }
+
         Ok(())
     }
     
@@ -132,11 +146,36 @@ impl EternalReckoningCodec {
         buf: &mut BytesMut,
     ) -> Result<Option<Operation>, Error>
     {
-        buf.split_to(OPCODE_LEN);
+        let mut data = std::io::Cursor::new(&buf);
+
+        data.advance(OPCODE_LEN);
+        if data.remaining() < 4 {
+            return Ok(None);
+        }
+
+        let data_count = data.get_u32_le();
+        let data_len = data_count as usize * (16+24);
+        if data.remaining() < data_len {
+            return Ok(None);
+        }
+
+        let mut updates = Vec::new();
+        for _ in 0..data_count {
+            let mut uuid_buf: [u8; 16] = [0; 16];
+            data.copy_to_slice(&mut uuid_buf);
+            updates.push(operation::EntityUpdate {
+                uuid: Uuid::from_slice(&uuid_buf[..]).unwrap(),
+                position: nalgebra::Point3::<f64>::new(
+                    data.get_f64_le(),
+                    data.get_f64_le(),
+                    data.get_f64_le(),
+                ),
+            });
+        }
+
+        buf.split_to(OPCODE_LEN+4+data_len);
         Ok(Some(Operation::SvUpdateWorld(
-            operation::SvUpdateWorld {
-                updates: Vec::new(),
-            }
+            operation::SvUpdateWorld { updates }
         )))
     }
 
@@ -206,7 +245,6 @@ mod tests {
         buf.put_f64_le(1.0);
         buf.put_f64_le(2.0);
 
-        let mut buf = BytesMut::from(buf);
         let packet = codec.decode(&mut buf);
 
         assert!(&packet.is_ok());
@@ -221,5 +259,38 @@ mod tests {
             },
             _ => panic!("Operation != ClConnectMessage"),
         };
+    }
+
+    #[test]
+    fn test_encode_and_decode_world_update() {
+        let mut codec = EternalReckoningCodec;
+        let buf = BytesMut::with_capacity(1 + 4 + 16+24);
+
+        let mut buf = BytesMut::from(buf);
+        let uuid = Uuid::new_v4();
+        let position = nalgebra::Point3::<f64>::new(0.0, 1.0, 2.0);
+        let packet = Operation::SvUpdateWorld(
+            operation::SvUpdateWorld {
+                updates: vec![operation::EntityUpdate {
+                    uuid, position,
+                }],
+            }
+        );
+
+        codec.encode(packet.clone(), &mut buf).unwrap();
+        let decoded = codec.decode(&mut buf);
+        assert!(decoded.is_ok());
+        let decoded = decoded.unwrap();
+        assert!(decoded.is_some());
+
+        if let Operation::SvUpdateWorld(decoded_op) = decoded.unwrap() {
+            assert_eq!(decoded_op.updates.len(), 1);
+
+            let update = decoded_op.updates.get(0).unwrap();
+            assert_eq!(update.uuid, uuid);
+            assert_eq!(update.position, position);
+        } else {
+            panic!("decoded as incorrect operation");
+        }
     }
 }
