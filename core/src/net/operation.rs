@@ -43,5 +43,11 @@ pub struct SvUpdateWorld {
 #[derive(Clone)]
 pub struct EntityUpdate {
     pub uuid: Uuid,
-    pub position: nalgebra::Point3<f64>,
+    pub data: Vec<EntityComponent>,
+}
+
+#[derive(Clone)]
+pub enum EntityComponent {
+    Health(u64),
+    Position(nalgebra::Point3<f64>),
 }

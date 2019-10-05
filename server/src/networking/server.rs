@@ -63,7 +63,11 @@ impl Server {
                         let updates = vec![
                             operation::EntityUpdate {
                                 uuid: data.uuid,
-                                position: data.position,
+                                data: vec![
+                                    operation::EntityComponent::Position(
+                                        data.position
+                                    )
+                                ],
                             }
                         ];
                         Operation::SvUpdateWorld(

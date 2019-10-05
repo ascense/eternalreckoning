@@ -5,8 +5,16 @@ use specs::{
     WorldExt,
 };
 
-use crate::action::{ActionEvent, Update};
-use super::component::Position;
+use crate::action::{
+    ActionEvent,
+    Update,
+};
+use super::component::{
+    Client,
+    Health,
+    Name,
+    Position,
+};
 use super::system::{
     Connections,
     PlayerMovement,
@@ -18,6 +26,9 @@ use eternalreckoning_core::simulation::Simulation;
 pub fn build_simulation<'a, 'b>(update_tx: UnboundedSender<Update>) -> Simulation<'a, 'b, ActionEvent> {
     let mut world = World::new();
 
+    world.register::<Client>();
+    world.register::<Health>();
+    world.register::<Name>();
     world.register::<Position>();
     
     let dispatcher = DispatcherBuilder::new()
