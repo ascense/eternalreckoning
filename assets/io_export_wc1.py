@@ -221,8 +221,14 @@ def write_file(filepath, objects, depsgraph, scene,
 
             # Get all meshes
             subprogress1.enter_substeps(len(objects))
+
+            # write Header
+            end_pos = fhnd.tell()
+            fhnd.seek(0)
+            fw(get_binary_u64(len(objects)))
+            fhnd.seek(end_pos)
+
             for i, ob_main in enumerate(objects):
-                
                 # ignore dupli children
                 if ob_main.parent and ob_main.parent.instance_type in {'VERTS', 'FACES'}:
                     subprogress1.step("Ignoring %s, dupli child..." % ob_main.name)
@@ -236,13 +242,7 @@ def write_file(filepath, objects, depsgraph, scene,
                     # ~ print(ob_main.name, 'has', len(obs) - 1, 'dupli children')
 
                 subprogress1.enter_substeps(len(obs))
-                
-                # write Header
-                end_pos = fhnd.tell()
-                fhnd.seek(0)
-                fw(get_binary_u64(len(obs)))
-                fhnd.seek(end_pos)
-                    
+
                 for ob, ob_mat in obs:
                     
                     with ProgressReportSubstep(subprogress1, 5) as subprogress2:
@@ -311,12 +311,9 @@ def write_file(filepath, objects, depsgraph, scene,
                         subprogress2.step()
 
                         obj_indices = 0
-                        for f, f_index in face_index_pairs:
-
-                            f_v = [(vi, me_verts[v_idx], l_idx)
-                                   for vi, (v_idx, l_idx) in enumerate(zip(f.vertices, f.loop_indices))]
-
-                            for vi, v, li in f_v:
+                        for f in me.polygons:
+                            # f.loop_indices
+                            for v in f.vertices:
                                 fw(get_binary_u64(totverts + v.index))
                                 obj_indices += 1
 

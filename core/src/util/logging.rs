@@ -1,6 +1,6 @@
 use failure::Error;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct LoggingConfig {
     pub level: LogLevel,
@@ -16,7 +16,7 @@ impl Default for LoggingConfig {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum LogLevel {
     Error,
     Warn,

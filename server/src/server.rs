@@ -11,7 +11,7 @@ use crate::game::build_simulation;
 use crate::networking::Server;
 use crate::util::config::Config;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ServerConfig {
     pub tick_rate: u64,

@@ -1,0 +1,21 @@
+[client]
+server-address = "127.0.0.1:6142"
+
+[key-map]
+move-forward = 17
+move-backward = 31
+move-left = 30
+move-right = 32
+move-up = 57
+
+[logging]
+level = "Debug"
+file = "client.log"
+
+[mouse]
+sensitivity = 3.15
+
+[simulation]
+gravity = 0.008
+movement-speed = 0.1
+jump-force = 0.1725
