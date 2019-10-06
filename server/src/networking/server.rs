@@ -167,7 +167,7 @@ impl ClientReader {
                 ))?;
                 self.shared.lock().unwrap()
                     .clients.get(&self.uuid).unwrap()
-                        .send(Operation::SvConnectResponse(
+                        .unbounded_send(Operation::SvConnectResponse(
                             operation::SvConnectResponse {}
                         ));
                 Ok(())
@@ -285,7 +285,8 @@ impl Future for ClientWriter {
                             self.frames.start_send(op)?;
                             self.state = ClientWriterState::Sending;
                         },
-                        _ => return Ok(Async::NotReady),
+                        Async::NotReady => return Ok(Async::NotReady),
+                        Async::Ready(None) => return Ok(Async::Ready(())),
                     }
                 }
             }
