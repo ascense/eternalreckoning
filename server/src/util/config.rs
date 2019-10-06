@@ -1,9 +1,10 @@
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
+
+use eternalreckoning_core::util::logging::LoggingConfig;
 
 use crate::server::ServerConfig;
-use super::logging::LoggingConfig;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct Config {
     pub logging: LoggingConfig,

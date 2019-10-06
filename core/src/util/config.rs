@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
 
 use toml;
 use failure_derive::Fail;
@@ -11,7 +10,7 @@ pub enum ConfigurationError {
     InvalidArguments,
     #[fail(display = "malformed configuration: {}", _0)]
     MalformedData(#[cause] toml::de::Error),
-    #[fail(display = "unable to read configuration file: {}", path)]
+    #[fail(display = "unable to access configuration file: {}", path)]
     IoError {
         #[cause] cause: std::io::Error,
         path: String,
@@ -24,7 +23,7 @@ pub struct Config<T> {
 
 impl<T> Config<T>
 where
-    T: serde::de::DeserializeOwned + std::default::Default,
+    T: serde::ser::Serialize + serde::de::DeserializeOwned + std::default::Default,
 {
     pub fn from_str(src: &str)
         -> Result<Config<T>, ConfigurationError>
@@ -52,5 +51,20 @@ where
             })?;
 
         Config::from_str(&buffer)
+    }
+
+    pub fn write_default(path: &String)
+        -> Result<Config<T>, ConfigurationError>
+    {
+        let config: T = T::default();
+
+        let buffer = toml::to_string(&config).unwrap();
+        std::fs::write(path, &buffer[..])
+            .map_err(|e| ConfigurationError::IoError {
+                cause:e ,
+                path: path.clone(),
+            })?;
+        
+        Ok(Config { data: config })
     }
 }

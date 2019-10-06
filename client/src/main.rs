@@ -6,15 +6,12 @@ fn main() {
 
     let bootstrap = eternalreckoning_client::Bootstrap {
         args: args,
-        config: Some(
-            concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/config/default.toml"
-            ).to_string()
-        ),
+        config: Some("config/client.toml".to_string()),
     };
 
     if let Err(ref e) = eternalreckoning_client::run(bootstrap) {
+        log::error!("Application error: {}", e);
+
         eprintln!("Application error: {}", e);
         eprintln!("Backtrace: {:?}", e.backtrace());
 

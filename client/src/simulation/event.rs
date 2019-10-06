@@ -1,8 +1,12 @@
+use uuid::Uuid;
+use eternalreckoning_core::net::operation::Operation;
+
 pub enum Event {
     InputEvent(InputEvent),
-    NetworkEvent,
+    NetworkEvent(Operation),
 }
 
+#[derive(Debug)]
 pub enum InputEvent {
     KeyUp(crate::input::InputTypes),
     KeyDown(crate::input::InputTypes),
@@ -22,5 +26,6 @@ pub enum UpdateEvent {
 
 #[derive(Clone)]
 pub struct PositionUpdate {
+    pub uuid: Option<Uuid>,
     pub position: nalgebra::Point3<f64>,
 }

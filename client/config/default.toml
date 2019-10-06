@@ -1,8 +1,0 @@
-[client]
-server-address = "127.0.0.1:6142"
-
-[logging]
-level = "Trace"
-
-[mouse]
-sensitivity = 3.15

@@ -6,7 +6,11 @@ use std::sync::mpsc::{
     Receiver,
 };
 
-use failure::Error;
+use failure::{
+    format_err,
+    Error,
+};
+use futures::sync::mpsc::unbounded;
 use rendy::{
     factory::Factory,
     wsi::winit,
@@ -15,7 +19,6 @@ use rendy::{
 use crate::{
     input,
     input::InputTypes,
-    loaders,
     networking,
     renderer,
     simulation::{
@@ -26,7 +29,7 @@ use crate::{
     window::Window,
 };
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ClientConfig {
     pub server_address: String,
@@ -57,10 +60,11 @@ fn run(
     let started = std::time::Instant::now();
 
     let mut key_map = std::collections::HashMap::<u32, InputTypes>::new();
-    key_map.insert(17, InputTypes::MoveForward);
-    key_map.insert(30, InputTypes::MoveLeft);
-    key_map.insert(31, InputTypes::MoveBackward);
-    key_map.insert(32, InputTypes::MoveRight);
+    key_map.insert(config.key_map.move_forward, InputTypes::MoveForward);
+    key_map.insert(config.key_map.move_left, InputTypes::MoveLeft);
+    key_map.insert(config.key_map.move_backward, InputTypes::MoveBackward);
+    key_map.insert(config.key_map.move_right, InputTypes::MoveRight);
+    key_map.insert(config.key_map.move_up, InputTypes::MoveUp);
 
     let mut frame = 0u64;
     let mut period = started;
@@ -69,6 +73,7 @@ fn run(
     let mouse_sens = input::MouseSensitivity::new(config.mouse.sensitivity);
     let mut mouse_euler = input::MouseEuler::default();
     let mut camera_pos = nalgebra::Point3::<f64>::new(0.0, 0.0, 0.0);
+    let mut mouse_look = false;
 
     window.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -79,25 +84,54 @@ fn run(
                     *control_flow = winit::event_loop::ControlFlow::Exit;
                 },
                 winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                    log::trace!(
+                        "Keyboard input: {} {}",
+                        input.scancode,
+                        match input.state {
+                            winit::event::ElementState::Pressed => "pressed",
+                            winit::event::ElementState::Released => "released",
+                        }
+                    );
+
                     if input.scancode == 1 {
                         *control_flow = winit::event_loop::ControlFlow::Exit;
                     }
 
                     if let Some(action) = key_map.get(&input.scancode) {
                         let event = match input.state {
-                            winit::event::ElementState::Pressed => event::InputEvent::KeyDown(*action),
-                            winit::event::ElementState::Released => event::InputEvent::KeyUp(*action),
+                            winit::event::ElementState::Pressed => {
+                                event::InputEvent::KeyDown(*action)
+                            },
+                            winit::event::ElementState::Released => {
+                                event::InputEvent::KeyUp(*action)
+                            },
                         };
                         event_tx.send(event::Event::InputEvent(event)).unwrap();
+                    }
+                },
+                winit::event::WindowEvent::MouseInput { button, state, .. } => {
+                    log::trace!(
+                        "Mouse input: {:?} button {}",
+                        button,
+                        match state {
+                            winit::event::ElementState::Pressed => "pressed",
+                            winit::event::ElementState::Released => "released",
+                        },
+                    );
+
+                    if button == winit::event::MouseButton::Right {
+                        mouse_look = state == winit::event::ElementState::Pressed;
                     }
                 },
                 _ => {},
             },
             winit::event::Event::DeviceEvent { event, .. } => match event {
                 winit::event::DeviceEvent::MouseMotion { delta } => {
-                    mouse_euler.update(delta, &mouse_sens);
-                    let event = event::InputEvent::CameraAngle(mouse_euler.clone());
-                    event_tx.send(event::Event::InputEvent(event)).unwrap();
+                    if mouse_look {
+                        mouse_euler.update(delta, &mouse_sens);
+                        let event = event::InputEvent::CameraAngle(mouse_euler.clone());
+                        event_tx.send(event::Event::InputEvent(event)).unwrap();
+                    }
                 },
                 _ => {},
             },
@@ -106,9 +140,33 @@ fn run(
                     let update = update_rx.try_recv();
                     match update {
                         Ok(e) => {
-                            if let event::UpdateEvent::PositionUpdate(event::PositionUpdate { position }) = e.event {
-                                camera_pos = position;
-                            }
+                            let event::UpdateEvent::PositionUpdate(event::PositionUpdate { uuid, position }) = e.event;
+                            match uuid {
+                                Some(uuid) => {
+                                    let position = nalgebra::Transform3::<f32>::identity() * 
+                                        nalgebra::Translation3::new(
+                                            position.x as f32,
+                                            position.y as f32,
+                                            position.z as f32
+                                        );
+                                    let mut found = false;
+                                    for object in &mut scene.objects {
+                                        if object.id.is_some() && object.id.unwrap() == uuid {
+                                            found = true;
+                                            object.position = position;
+                                            break;
+                                        }
+                                    }
+                                    if !found {
+                                        scene.objects.push(renderer::scene::Object {
+                                            id: Some(uuid),
+                                            model: 1,
+                                            position
+                                        });
+                                    }
+                                },
+                                None => camera_pos = position,
+                            };
                         },
                         Err(_) => break,
                     }
@@ -154,6 +212,13 @@ fn run(
             _ => {},
         }
 
+        // TODO: do io outside the rendering thread
+        for model in &mut scene.models {
+            if model.len() == 0 {
+                model.load().unwrap_or_else(|err| log::error!("Error: {}", err));
+            }
+        }
+
         if *control_flow == winit::event_loop::ControlFlow::Exit && graph.is_some() {
             log::info!("Exiting...");
             graph.take().unwrap().dispose(&mut factory, &scene);
@@ -166,49 +231,56 @@ fn run(
 pub fn main(config: config::Config) -> Result<(), Error> {
     let rendy_config: rendy::factory::Config = Default::default();
     let (mut factory, mut families): (Factory<Backend>, _) =
-        rendy::factory::init(rendy_config).unwrap();
+        rendy::factory::init(rendy_config)
+            .map_err(|err| format_err!("failed to configure graphics device: {:?}", err))?;
 
     log::info!("Creating window...");
 
-    let window = Window::new();
+    let window = Window::new()?;
 
     log::info!("Initializing rendering pipeline...");
 
     let aspect = window.get_aspect_ratio() as f32;
 
-    let marker_reader = std::io::BufReader::new(
-        std::fs::File::open(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/marker.wc1"
-        ))?
-    );
-
-    let floor_reader = std::io::BufReader::new(
-        std::fs::File::open(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/floor.wc1"
-        ))?
-    );
-
     let mut scene = renderer::scene::Scene {
         camera: renderer::scene::Camera::new(aspect),
         ui: renderer::scene::UI::new(aspect),
+        models: vec![
+            renderer::Model::new("assets/floor.erm".to_string()),
+            renderer::Model::new("assets/marker.erm".to_string()),
+            renderer::Model::new("assets/pillar.erm".to_string()),
+            renderer::Model::new("assets/elf-spear.erm".to_string()),
+        ],
         objects: vec![
             renderer::scene::Object {
-                mesh: loaders::mesh_from_wc1(floor_reader)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
+                id: None,
+                model: 0,
                 position: nalgebra::Transform3::identity() *
                     nalgebra::Translation3::new(0.0, 0.0, 0.0),
             },
             renderer::scene::Object {
-                mesh: loaders::mesh_from_wc1(marker_reader)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
+                id: None,
+                model: 1,
                 position: nalgebra::Transform3::identity() *
                     nalgebra::Translation3::new(0.0, 0.0, 0.0),
+            },
+            renderer::scene::Object {
+                id: None,
+                model: 2,
+                position: nalgebra::Transform3::identity() *
+                    nalgebra::Translation3::new(-5.5, 0.0, -7.0),
+            },
+            renderer::scene::Object {
+                id: None,
+                model: 2,
+                position: nalgebra::Transform3::identity() *
+                    nalgebra::Translation3::new(5.5, 0.0, -7.0),
+            },
+            renderer::scene::Object {
+                id: None,
+                model: 3,
+                position: nalgebra::Transform3::identity() *
+                    nalgebra::Translation3::new(0.0, 0.0, -9.0),
             },
         ],
     };
@@ -221,7 +293,7 @@ pub fn main(config: config::Config) -> Result<(), Error> {
     );
 
     let (event_tx, event_rx) = channel();
-    let (net_update_tx, net_update_rx) = channel();
+    let (net_update_tx, net_update_rx) = unbounded();
 
     log::info!("Initializing networking");
     
@@ -242,8 +314,9 @@ pub fn main(config: config::Config) -> Result<(), Error> {
     );
 
     let (main_update_tx, main_update_rx) = channel();
+    let sim_config = config.simulation.clone();
     thread::spawn(move || {
-        let mut game = build_simulation(vec![main_update_tx, net_update_tx]);
+        let mut game = build_simulation(sim_config, main_update_tx, net_update_tx);
         game.run(event_rx, tick_length);
     });
 

@@ -1,6 +1,6 @@
+[logging]
+level = "Debug"
+
 [server]
 tick-rate = 60
 bind-address = "127.0.0.1:6142"
-
-[logging]
-level = "Trace"

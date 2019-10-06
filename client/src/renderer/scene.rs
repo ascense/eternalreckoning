@@ -11,7 +11,8 @@ pub struct UI {
 
 #[derive(Debug)]
 pub struct Object {
-    pub mesh: super::Mesh,
+    pub id: Option<uuid::Uuid>,
+    pub model: u64,
     pub position: nalgebra::Transform3<f32>,
 }
 
@@ -19,6 +20,7 @@ pub struct Object {
 pub struct Scene {
     pub camera: Camera,
     pub ui: UI,
+    pub models: Vec<super::Model>,
     pub objects: Vec<Object>,
 }
 

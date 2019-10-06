@@ -1,6 +1,6 @@
 use failure::Error;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct LoggingConfig {
     pub level: LogLevel,
@@ -16,7 +16,7 @@ impl Default for LoggingConfig {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum LogLevel {
     Error,
     Warn,
@@ -25,7 +25,7 @@ pub enum LogLevel {
     Trace,
 }
 
-pub fn configure(config: &LoggingConfig) -> Result<(), Error> {
+pub fn configure(config: &LoggingConfig, component: &'static str) -> Result<(), Error> {
     let level = match config.level {
         LogLevel::Error => log::LevelFilter::Error,
         LogLevel::Warn => log::LevelFilter::Warn,
@@ -46,7 +46,7 @@ pub fn configure(config: &LoggingConfig) -> Result<(), Error> {
         })
         .level(log::LevelFilter::Warn)
         .level_for("eternalreckoning_core", level)
-        .level_for("eternalreckoning_server", level)
+        .level_for(component, level)
         .chain(std::io::stdout());
     
     if let Some(ref path) = config.file {

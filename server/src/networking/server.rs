@@ -1,13 +1,10 @@
 use std::sync::mpsc::{
-    Receiver,
     Sender,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use bytes::Bytes;
-use failure::Error;
-use futures::future::Either;
+use failure::{Error, format_err};
 use futures::sync::mpsc;
 use tokio::io;
 use tokio::net::{
@@ -20,19 +17,19 @@ use uuid::Uuid;
 
 use eternalreckoning_core::net::{
     codec::EternalReckoningCodec,
-    packet::{
-        Packet,
+    operation::{
+        self,
         Operation,
     },
 };
 use crate::action::event::{
+    self,
     ActionEvent,
-    ConnectionEvent,
     Update,
 };
 
-type Tx = mpsc::UnboundedSender<Bytes>;
-type Rx = mpsc::UnboundedReceiver<Bytes>;
+type Tx = mpsc::UnboundedSender<Operation>;
+type Rx = mpsc::UnboundedReceiver<Operation>;
 
 pub struct Server;
 
@@ -45,12 +42,48 @@ impl Server {
         Server {}
     }
 
-    pub fn run(self, address: &String, sender: Sender<ActionEvent>) {
+    pub fn run(
+        self,
+        address: &String,
+        update_rx: mpsc::UnboundedReceiver<Update>,
+        sender: Sender<ActionEvent>
+    )
+    {
         let addr = address.parse().unwrap();
         let listener = TcpListener::bind(&addr).unwrap();
         log::info!("Listening on: {}", addr);
 
         let state = Arc::new(Mutex::new(Shared::new()));
+
+        let multiplex_state = state.clone();
+        let multiplex = update_rx
+            .for_each(move |update| {
+                let op = match update.event {
+                    event::UpdateEvent::MovementEvent(data) => {
+                        let updates = vec![
+                            operation::EntityUpdate {
+                                uuid: data.uuid,
+                                data: vec![
+                                    operation::EntityComponent::Position(
+                                        data.position
+                                    )
+                                ],
+                            }
+                        ];
+                        Operation::SvUpdateWorld(
+                            operation::SvUpdateWorld { updates }
+                        )
+                    },
+                };
+
+                multiplex_state.lock().unwrap()
+                    .clients.get(&update.uuid).unwrap()
+                        .unbounded_send(op).map_err(|err| {
+                            log::error!("Failed to send update to clients: {:?}", err);
+                        });
+
+                Ok(())
+            });
 
         let server = listener.incoming()
             .for_each(move |socket| {
@@ -60,8 +93,8 @@ impl Server {
             .map_err(|err| {
                 println!("accept error = {:?}", err);
             });
-        
-        tokio::run(server);
+
+        tokio::run(server.join(multiplex).map(|_| {}));
     }
 }
 
@@ -125,27 +158,43 @@ impl ClientReader {
         }
     }
 
-    fn await_connection_request(&mut self, packet: &Packet) -> Result<(), Error> {
-        match packet.operation {
-            Operation::ConnectReq => {
+    fn await_connection_request(&mut self, packet: &Operation) -> Result<(), Error> {
+        match packet {
+            Operation::ClConnectMessage(_) => {
                 self.state = ClientReaderState::Connected;
                 self.event_tx.send(ActionEvent::ConnectionEvent(
-                    ConnectionEvent::ClientConnected(self.uuid)
+                    event::ConnectionEvent::ClientConnected(self.uuid)
                 ))?;
                 self.shared.lock().unwrap()
                     .clients.get(&self.uuid).unwrap()
-                        .unbounded_send(Bytes::from("a"))?;
+                        .send(Operation::SvConnectResponse(
+                            operation::SvConnectResponse {}
+                        ));
                 Ok(())
             },
             _ => Err(failure::format_err!(
                 "unexpected client message: {}",
-                packet.operation
+                packet
             )),
         }
     }
 
-    fn connected(&self, packet: &Packet) -> Result<(), Error> {
-        Ok(())
+    fn connected(&mut self, packet: &Operation) -> Result<(), Error> {
+        match packet {
+            Operation::ClMoveSetPosition(data) => {
+                self.event_tx.send(ActionEvent::MovementEvent(
+                    crate::action::event::MovementEvent {
+                        uuid: self.uuid,
+                        position: data.pos,
+                    }
+                ));
+                Ok(())
+            },
+            _ => Err(failure::format_err!(
+                "unexpected client message: {}",
+                packet
+            )),
+        }
     }
 }
 
@@ -155,7 +204,7 @@ impl Drop for ClientReader {
             ClientReaderState::AwaitConnectionRequest => (),
             _ => {
                 self.event_tx.send(ActionEvent::ConnectionEvent(
-                    ConnectionEvent::ClientDisconnected(self.uuid)
+                    event::ConnectionEvent::ClientDisconnected(self.uuid)
                 ));
             }
         };
@@ -167,11 +216,8 @@ impl Future for ClientReader {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<(), Error> {
-        log::trace!("reader poll");
-
         while let Async::Ready(frame) = self.frames.poll()? {
             if let Some(packet) = frame {
-                log::trace!("reader packet");
                 match self.state {
                     ClientReaderState::AwaitConnectionRequest => self.await_connection_request(&packet)?,
                     ClientReaderState::Connected => self.connected(&packet)?,
@@ -234,20 +280,16 @@ impl Future for ClientWriter {
                     self.state = ClientWriterState::Connected;
                 },
                 ClientWriterState::Connected => {
-                    match self.rx.poll().unwrap() {
-                        Async::Ready(Some(_)) => {
-                            self.frames.start_send(Packet {
-                                operation: Operation::ConnectRes,
-                            });
+                    match self.rx.poll().map_err(|_| format_err!("reader disconnected"))? {
+                        Async::Ready(Some(op)) => {
+                            self.frames.start_send(op)?;
                             self.state = ClientWriterState::Sending;
                         },
-                        _ => break,
+                        _ => return Ok(Async::NotReady),
                     }
                 }
             }
         }
-
-        Ok(Async::NotReady)
     }
 }
 
