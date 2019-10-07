@@ -82,7 +82,9 @@ impl Decoder for EternalReckoningCodec {
             SV_CONNECT_RESPONSE_OP => self.decode_svconnectresponse(buf)?,
             SV_UPDATE_WORLD_OP => self.decode_svupdateworld(buf)?,
             CL_MOVE_SET_POSITION_OP => self.decode_clmovesetposition(buf)?,
-            _ => return Err(CodecError::InvalidOpcode(*opcode).into()),
+            _ => {
+                return Err(CodecError::InvalidOpcode(*opcode).into());
+            },
         };
         match packet {
             Some(ref packet) => log::trace!("Decoded: {}", packet),
@@ -175,7 +177,7 @@ impl EternalReckoningCodec {
                         read_size += size;
                         component_data.push(component);
                     },
-                    Ok(None) => break,
+                    Ok(None) => return Ok(None),
                     Err(err) => return Err(err),
                 };
             }
@@ -375,6 +377,8 @@ mod tests {
         );
 
         codec.encode(packet.clone(), &mut buf).unwrap();
+        assert_eq!(buf.len(), buf.capacity());
+
         let decoded = codec.decode(&mut buf);
         assert!(decoded.is_ok());
         let decoded = decoded.unwrap();
@@ -394,6 +398,28 @@ mod tests {
             }
         } else {
             panic!("decoded as incorrect operation");
+        }
+
+        assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn test_decode_incomplete_world_update() {
+        let mut codec = EternalReckoningCodec;
+
+        let mut buf = BytesMut::with_capacity(41);
+        buf.put_u8(0x10);
+        buf.put_u32_le(1);
+        buf.put_slice(&b"\x13\xfc\x8c\x89yjBG\x9c\xfc\xf4\ng\x84\x19)"[..]);
+        buf.put_u32_le(1);
+        buf.put_u8(0x02);
+        buf.put_u64_le(0);
+        buf.put_slice(&b"\0\0\0\0\0\0\0"[..]);
+
+        match codec.decode(&mut buf) {
+            Ok(Some(_)) => panic!("decoded packet from an incomplete buffer"),
+            Ok(None) => (),
+            Err(_) => panic!("decoding error from a valid stream"),
         }
     }
 }

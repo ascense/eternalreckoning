@@ -45,9 +45,7 @@ pub fn connect(
     event_tx: Sender<Event>,
 )
 {
-    let addr = address.parse().unwrap();
-
-    let client = TcpStream::connect(&addr)
+    let client = tokio_dns::TcpStream::connect(&address[..])
         .map(|stream| {
             log::info!("Connected to server");
 
@@ -173,7 +171,6 @@ impl WriteConnection {
     }
 
     fn send(&mut self, packet: Operation) -> Result<(), Error> {
-        log::trace!("Starting send for packet: {}", packet);
         self.frames.start_send(packet)?;
         self.state = WriteConnectionState::Sending;
         Ok(())
@@ -191,7 +188,6 @@ impl Future for WriteConnection {
                     self.send(Operation::ClConnectMessage(operation::ClConnectMessage))?;
                 },
                 WriteConnectionState::Sending => {
-                    log::trace!("Finishing write");
                     futures::try_ready!(self.frames.poll_complete());
                     self.state = WriteConnectionState::Connected;
                 },
