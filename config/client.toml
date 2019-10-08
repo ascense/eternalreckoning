@@ -16,6 +16,6 @@ file = "client.log"
 sensitivity = 3.15
 
 [simulation]
-gravity = 0.008
-movement-speed = 0.1
-jump-force = 0.1725
+gravity = 0.48
+movement-speed = 6.0
+jump-force = 10.35
