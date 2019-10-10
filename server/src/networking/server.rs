@@ -168,7 +168,9 @@ impl ClientReader {
                 self.shared.lock().unwrap()
                     .clients.get(&self.uuid).unwrap()
                         .unbounded_send(Operation::SvConnectResponse(
-                            operation::SvConnectResponse {}
+                            operation::SvConnectResponse {
+                                uuid: self.uuid.clone(),
+                            }
                         ));
                 Ok(())
             },
