@@ -78,14 +78,14 @@ const fn indirect_offset(index: usize, align: u64, offset: u64) -> u64 {
         INDIRECT_COMMAND_SIZE * offset
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C, align(16))]
 struct UniformArgs {
     proj: nalgebra::Matrix4<f32>,
     view: nalgebra::Matrix4<f32>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C, align(16))]
 struct InstanceArgs {
     model: nalgebra::Transform3<f32>,
@@ -103,7 +103,7 @@ pub struct TriangleRenderPipeline<B: hal::Backend> {
     model_buf: rendy::resource::Escape<rendy::resource::Buffer<B>>,
     indirect_buf: rendy::resource::Escape<rendy::resource::Buffer<B>>,
     sets: Vec<rendy::resource::Escape<rendy::resource::DescriptorSet<B>>>,
-    object_count: usize,
+    mesh_count: usize,
 }
 
 impl<B> SimpleGraphicsPipelineDesc<B, Scene> for TriangleRenderPipelineDesc
@@ -229,6 +229,16 @@ where
             }
         }
 
+        let mut mesh_count = 0;
+        for object in &scene.objects {
+            if object.model.is_none() {
+                continue;
+            }
+
+            let model = scene.models.get(object.model.unwrap()).unwrap();
+            mesh_count += model.len();
+        }
+
         Ok(TriangleRenderPipeline {
             align,
             uniform_buf: ubuf,
@@ -237,7 +247,7 @@ where
             model_buf: mbuf,
             indirect_buf: icmdbuf,
             sets,
-            object_count: scene.objects.len(),
+            mesh_count,
         })
     }
 }
@@ -314,11 +324,19 @@ where
         assert!(offset_v < MAX_VERTEX_COUNT as u32);
         assert!(offset_i < MAX_INDEX_COUNT as u32);
 
+        let mut mesh_count = 0;
         for object_i in 0..scene.objects.len() {
             let object = &scene.objects[object_i];
 
+            let model_id = match object.model {
+                Some(model_id) => model_id,
+                None => continue,
+            };
+
+            let model = scene.models.get(model_id).unwrap();
+            mesh_count += model.len();
             let (offset_v, offset_i, index_count) =
-                model_offsets.get(object.model as usize).unwrap();
+                model_offsets.get(model_id).unwrap();
 
             unsafe {
                 factory
@@ -326,7 +344,10 @@ where
                         &mut self.model_buf,
                         models_offset(index, self.align, object_i as u64),
                         &[InstanceArgs {
-                            model: object.position,
+                            model: match model.offset {
+                                Some(offset) => nalgebra::convert(object.position * nalgebra::Translation3::from(offset)),
+                                None => nalgebra::convert(object.position),
+                            }
                         }],
                     )
                     .unwrap();
@@ -347,7 +368,7 @@ where
             }
         }
 
-        if scene.objects.len() != self.object_count {
+        if self.mesh_count != mesh_count {
             rendy::graph::render::PrepareResult::DrawRecord
         } else {
             rendy::graph::render::PrepareResult::DrawReuse

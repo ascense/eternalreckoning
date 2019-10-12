@@ -1,4 +1,4 @@
-use std::time::{ Duration, Instant };
+use std::time::Duration;
 use std::thread;
 use std::sync::mpsc::{
     channel,
@@ -33,12 +33,14 @@ use crate::{
 #[serde(default, rename_all = "kebab-case")]
 pub struct ClientConfig {
     pub server_address: String,
+    pub field_of_view: f32,
 }
 
 impl Default for ClientConfig {
     fn default() -> ClientConfig {
         ClientConfig {
             server_address: "127.0.0.1:6142".to_string(),
+            field_of_view: 68.0,
         }
     }
 }
@@ -57,8 +59,6 @@ fn run(
     event_tx: Sender<event::Event>,
     update_rx: Receiver<event::Update>,
 ) -> Result<(), Error> {
-    let started = std::time::Instant::now();
-
     let mut key_map = std::collections::HashMap::<u32, InputTypes>::new();
     key_map.insert(config.key_map.move_forward, InputTypes::MoveForward);
     key_map.insert(config.key_map.move_left, InputTypes::MoveLeft);
@@ -66,8 +66,6 @@ fn run(
     key_map.insert(config.key_map.move_right, InputTypes::MoveRight);
     key_map.insert(config.key_map.move_up, InputTypes::MoveUp);
 
-    let mut frame = 0u64;
-    let mut period = started;
     let mut graph = Some(graph);
 
     let mouse_sens = input::MouseSensitivity::new(config.mouse.sensitivity);
@@ -140,32 +138,29 @@ fn run(
                     let update = update_rx.try_recv();
                     match update {
                         Ok(e) => {
-                            let event::UpdateEvent::PositionUpdate(event::PositionUpdate { uuid, position }) = e.event;
-                            match uuid {
-                                Some(uuid) => {
-                                    let position = nalgebra::Transform3::<f32>::identity() * 
+                            match e.event {
+                                event::UpdateEvent::PositionUpdate(event::PositionUpdate { entity, position, .. }) => {
+                                    let position = nalgebra::Similarity3::<f32>::identity() * 
                                         nalgebra::Translation3::new(
                                             position.x as f32,
                                             position.y as f32,
                                             position.z as f32
                                         );
-                                    let mut found = false;
-                                    for object in &mut scene.objects {
-                                        if object.id.is_some() && object.id.unwrap() == uuid {
-                                            found = true;
-                                            object.position = position;
-                                            break;
-                                        }
-                                    }
-                                    if !found {
+
+                                    if !scene.set_position(entity, position.clone()) {
                                         scene.objects.push(renderer::scene::Object {
-                                            id: Some(uuid),
-                                            model: 1,
+                                            id: entity,
+                                            model: None,
                                             position
                                         });
                                     }
                                 },
-                                None => camera_pos = position,
+                                event::UpdateEvent::CameraUpdate(event::CameraUpdate(position)) => {
+                                    camera_pos = position;
+                                },
+                                event::UpdateEvent::ModelUpdate(event::ModelUpdate { entity, ref path, offset }) => {
+                                    scene.set_model(entity, path, offset);
+                                },
                             };
                         },
                         Err(_) => break,
@@ -187,26 +182,10 @@ fn run(
                     nalgebra::Projective3::identity() * position * rotation * translation
                 );
 
-                scene.objects[1].position = nalgebra::convert(position);
-
                 factory.maintain(&mut families);
 
                 if let Some(ref mut graph) = graph {
                     graph.run(&mut factory, &mut families, &scene);
-                    frame += 1;
-                }
-
-                if period.elapsed() >= Duration::new(5, 0) {
-                    period = Instant::now();
-                    let elapsed = started.elapsed();
-                    let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + elapsed.subsec_nanos() as u64;
-
-                    log::info!(
-                        "Elapsed: {:?}. Frames: {}. FPS: {}",
-                        elapsed,
-                        frame,
-                        frame * 1_000_000_000 / elapsed_ns
-                    );
                 }
             },
             _ => {},
@@ -243,46 +222,10 @@ pub fn main(config: config::Config) -> Result<(), Error> {
     let aspect = window.get_aspect_ratio() as f32;
 
     let mut scene = renderer::scene::Scene {
-        camera: renderer::scene::Camera::new(aspect),
+        camera: renderer::scene::Camera::new(aspect, config.client.field_of_view),
         ui: renderer::scene::UI::new(aspect),
-        models: vec![
-            renderer::Model::new("assets/floor.erm".to_string()),
-            renderer::Model::new("assets/marker.erm".to_string()),
-            renderer::Model::new("assets/pillar.erm".to_string()),
-            renderer::Model::new("assets/elf-spear.erm".to_string()),
-        ],
-        objects: vec![
-            renderer::scene::Object {
-                id: None,
-                model: 0,
-                position: nalgebra::Transform3::identity() *
-                    nalgebra::Translation3::new(0.0, 0.0, 0.0),
-            },
-            renderer::scene::Object {
-                id: None,
-                model: 1,
-                position: nalgebra::Transform3::identity() *
-                    nalgebra::Translation3::new(0.0, 0.0, 0.0),
-            },
-            renderer::scene::Object {
-                id: None,
-                model: 2,
-                position: nalgebra::Transform3::identity() *
-                    nalgebra::Translation3::new(-5.5, 0.0, -7.0),
-            },
-            renderer::scene::Object {
-                id: None,
-                model: 2,
-                position: nalgebra::Transform3::identity() *
-                    nalgebra::Translation3::new(5.5, 0.0, -7.0),
-            },
-            renderer::scene::Object {
-                id: None,
-                model: 3,
-                position: nalgebra::Transform3::identity() *
-                    nalgebra::Translation3::new(0.0, 0.0, -9.0),
-            },
-        ],
+        models: Vec::new(),
+        objects: Vec::new(),
     };
 
     let graph = renderer::RenderGraph::new(
@@ -316,7 +259,12 @@ pub fn main(config: config::Config) -> Result<(), Error> {
     let (main_update_tx, main_update_rx) = channel();
     let sim_config = config.simulation.clone();
     thread::spawn(move || {
-        let mut game = build_simulation(sim_config, main_update_tx, net_update_tx);
+        let mut game = build_simulation(
+            sim_config,
+            main_update_tx,
+            net_update_tx,
+            tick_length
+        );
         game.run(event_rx, tick_length);
     });
 

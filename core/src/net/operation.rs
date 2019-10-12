@@ -28,7 +28,9 @@ impl Display for Operation {
 pub struct ClConnectMessage;
 
 #[derive(Clone)]
-pub struct SvConnectResponse;
+pub struct SvConnectResponse {
+    pub uuid: Uuid,
+}
 
 #[derive(Clone)]
 pub struct ClMoveSetPosition {

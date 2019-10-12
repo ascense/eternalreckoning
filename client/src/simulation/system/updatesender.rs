@@ -5,6 +5,7 @@ use specs::prelude::*;
 
 use super::super::{
     component::{
+        Model,
         Position,
         ServerID,
     },
@@ -12,6 +13,12 @@ use super::super::{
         Update,
         UpdateEvent,
         PositionUpdate,
+        CameraUpdate,
+        ModelUpdate,
+    },
+    resource::{
+        ActiveCamera,
+        ActiveCharacter,
     },
 };
 
@@ -31,36 +38,71 @@ impl UpdateSender {
 impl<'a> System<'a> for UpdateSender {
     type SystemData = (
         Entities<'a>,
+        Read<'a, ActiveCamera>,
+        Read<'a, ActiveCharacter>,
+        ReadStorage<'a, Model>,
         ReadStorage<'a, Position>,
         ReadStorage<'a, ServerID>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (entities, pos, id) = data;
+        let (entities, camera, character, model, pos, id) = data;
+
+        let time = std::time::Instant::now();
 
         for (ent, pos) in (&entities, &pos).join() {
+            if Some(ent) == camera.0 {
+                self.sender.send(Update {
+                    event: UpdateEvent::CameraUpdate(
+                        CameraUpdate(pos.0.clone())
+                    ),
+                    time,
+                })
+                    .unwrap_or_else(|err| {
+                        log::error!("failed to send update event: {}", err);
+                    });
+            }
+
             let event = Update {
-                time: std::time::Instant::now(),
                 event: UpdateEvent::PositionUpdate(
                     PositionUpdate {
+                        entity: ent,
                         uuid: match id.get(ent) {
                             Some(uuid) => Some(uuid.0),
                             None => None,
                         },
                         position: pos.0.clone(),
-                    },
+                    }
                 ),
+                time,
             };
 
             self.sender.send(event.clone()).unwrap_or_else(|err| {
                 log::error!("failed to send update event: {}", err);
             });
 
-            if id.get(ent).is_none() {
+            if character.0.is_some() && ent == character.0.unwrap() {
                 self.net_sender.unbounded_send(event).unwrap_or_else(|err| {
                     log::error!("failed to send update event: {}", err);
                 });
             }
+        }
+
+        for (ent, model) in (&entities, &model).join() {
+            let event = Update {
+                event: UpdateEvent::ModelUpdate(
+                    ModelUpdate {
+                        entity: ent,
+                        path: model.path.clone(),
+                        offset: model.offset,
+                    }
+                ),
+                time,
+            };
+
+            self.sender.send(event).unwrap_or_else(|err| {
+                log::error!("failed to send update event: {}", err);
+            });
         }
     }
 }

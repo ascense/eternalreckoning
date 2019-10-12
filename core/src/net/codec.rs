@@ -45,13 +45,13 @@ impl Encoder for EternalReckoningCodec {
 
         buf.reserve(std::mem::size_of::<OpcodeType>());
         match packet {
-            Operation::ClConnectMessage(_) => {    
+            Operation::ClConnectMessage(data) => {    
                 buf.put(CL_CONNECT_MESSAGE_OP);
-                Ok(())
+                self.encode_clconnectmessage(data, buf)
             },
-            Operation::SvConnectResponse(_) => {
+            Operation::SvConnectResponse(data) => {
                 buf.put(SV_CONNECT_RESPONSE_OP);
-                Ok(())
+                self.encode_svconnectresponse(data, buf)
             },
             Operation::SvUpdateWorld(data) => {
                 buf.put(SV_UPDATE_WORLD_OP);
@@ -96,6 +96,15 @@ impl Decoder for EternalReckoningCodec {
 }
 
 impl EternalReckoningCodec {
+    fn encode_clconnectmessage(
+        &self,
+        _data: operation::ClConnectMessage,
+        _buf: &mut BytesMut,
+    ) -> Result<(), Error>
+    {
+        Ok(())
+    }
+
     fn decode_clconnectmessage(
         &self,
         buf: &mut BytesMut,
@@ -105,13 +114,39 @@ impl EternalReckoningCodec {
         Ok(Some(Operation::ClConnectMessage(operation::ClConnectMessage)))
     }
 
+    fn encode_svconnectresponse(
+        &self,
+        data: operation::SvConnectResponse,
+        buf: &mut BytesMut,
+    ) -> Result<(), Error>
+    {
+        buf.reserve(16);
+        for byte in data.uuid.as_bytes() {
+            buf.put_u8(*byte);
+        }
+
+        Ok(())
+    }
+
     fn decode_svconnectresponse(
         &self,
         buf: &mut BytesMut,
     ) -> Result<Option<Operation>, Error>
     {
-        buf.split_to(OPCODE_LEN);
-        Ok(Some(Operation::SvConnectResponse(operation::SvConnectResponse)))
+        let mut data = std::io::Cursor::new(&buf);
+        data.advance(OPCODE_LEN);
+
+        if data.remaining() < 16 {
+            return Ok(None);
+        }
+        let mut uuid_buf: [u8; 16] = [0; 16];
+        data.copy_to_slice(&mut uuid_buf);
+        let uuid = Uuid::from_slice(&uuid_buf[..])?;
+
+        buf.split_to(OPCODE_LEN + 16);
+        Ok(Some(Operation::SvConnectResponse(
+            operation::SvConnectResponse { uuid }
+        )))
     }
 
     fn encode_svupdateworld(

@@ -2,8 +2,15 @@ use uuid::Uuid;
 use eternalreckoning_core::net::operation::Operation;
 
 pub enum Event {
+    ConnectionEvent(ConnectionEvent),
     InputEvent(InputEvent),
     NetworkEvent(Operation),
+}
+
+#[derive(Debug)]
+pub enum ConnectionEvent {
+    Connected(Uuid),
+    Disconnected(Uuid),
 }
 
 #[derive(Debug)]
@@ -21,11 +28,24 @@ pub struct Update {
 
 #[derive(Clone)]
 pub enum UpdateEvent {
+    CameraUpdate(CameraUpdate),
+    ModelUpdate(ModelUpdate),
     PositionUpdate(PositionUpdate),
 }
 
 #[derive(Clone)]
+pub struct CameraUpdate(pub nalgebra::Point3<f64>);
+
+#[derive(Clone)]
+pub struct ModelUpdate {
+    pub entity: specs::Entity,
+    pub path: String,
+    pub offset: Option<nalgebra::Vector3<f32>>,
+}
+
+#[derive(Clone)]
 pub struct PositionUpdate {
+    pub entity: specs::Entity,
     pub uuid: Option<Uuid>,
     pub position: nalgebra::Point3<f64>,
 }

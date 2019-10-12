@@ -11,9 +11,9 @@ pub struct UI {
 
 #[derive(Debug)]
 pub struct Object {
-    pub id: Option<uuid::Uuid>,
-    pub model: u64,
-    pub position: nalgebra::Transform3<f32>,
+    pub id: specs::Entity,
+    pub model: Option<usize>,
+    pub position: nalgebra::Similarity3<f32>,
 }
 
 #[derive(Debug)]
@@ -25,11 +25,11 @@ pub struct Scene {
 }
 
 impl Camera {
-    pub fn new(aspect: f32) -> Camera {
+    pub fn new(aspect: f32, vfov: f32) -> Camera {
         Camera {
             proj: nalgebra::Perspective3::new(
                 aspect,
-                3.1415 / 4.0, // FOV in radians?
+                std::f32::consts::PI * (vfov / 180.0),
                 1.0,
                 200.0,
             ),
@@ -58,5 +58,74 @@ impl UI {
                 1.0,
             ),
         }
+    }
+}
+
+impl Scene {
+    pub fn set_model(
+        &mut self,
+        id: specs::Entity,
+        path: &String,
+        offset: Option<nalgebra::Vector3::<f32>>,
+    ) -> bool
+    {
+        match self.object_by_id(id) {
+            Some(index) => {
+                let model = self.add_or_get_model(path, offset);
+                let object = self.objects.get_mut(index).unwrap();
+                object.model = Some(model);
+                return true;
+            },
+            _ => false,
+        }
+    }
+
+    pub fn set_position(
+        &mut self,
+        id: specs::Entity,
+        position: nalgebra::Similarity3::<f32>,
+    ) -> bool
+    {
+        match self.object_by_id(id) {
+            Some(index) => {
+                let object = self.objects.get_mut(index).unwrap();
+                object.position = position;
+                return true;
+            },
+            _ => false,
+        }
+    }
+
+    fn object_by_id(&self, id: specs::Entity) -> Option<usize> {
+        for i in 0..self.objects.len() {
+            let object = self.objects.get(i).unwrap();
+
+            if object.id == id {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn add_or_get_model(
+        &mut self,
+        path: &String,
+        offset: Option<nalgebra::Vector3::<f32>>
+    ) -> usize
+    {
+        for i in 0..self.models.len() {
+            let model = self.models.get(i).unwrap();
+
+            if &model.path == path {
+                return i;
+            }
+        }
+
+        let mut model = super::Model::new(path.clone());
+        if let Some(offset) = offset {
+            model.set_offset(offset);
+        }
+        self.models.push(model);
+        self.models.len() - 1
     }
 }
