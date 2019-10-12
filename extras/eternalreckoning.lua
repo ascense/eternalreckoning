@@ -16,8 +16,8 @@ eternalreckoning_protocol = Proto("EternalReckoning", "Eternal Reckoning Protoco
 
 opcode = ProtoField.uint8("eternalreckoning.opcode", "opcode", base.HEX)
 
-update_count = ProtoField.uint32("eternalreckoning.update_count", "updates", base.DEC)
 uuid = ProtoField.guid("eternalreckoning.uuid", "uuid", base.HEX)
+update_count = ProtoField.uint32("eternalreckoning.update_count", "updates", base.DEC)
 component_count = ProtoField.uint32("eternalreckoning.component_count", "components", base.DEC)
 component_code = ProtoField.uint8("eternalreckoning.component_code", "component", base.HEX)
 
@@ -43,7 +43,9 @@ function eternalreckoning_protocol.dissector(buffer, pinfo, tree)
   local opcode_name = get_opcode_name(opcode_number)
   subtree:add_le(opcode, buffer(0,1)):append_text(" (" .. opcode_name .. ")")
   
-  if opcode_name == "SV_UPDATE_WORLD" then
+  if opcode_name == "SV_CONNECT_RESPONSE" then
+    subtree:add_le(uuid, buffer(1,16))
+  elseif opcode_name == "SV_UPDATE_WORLD" then
     local count = buffer(1,4):le_uint()
     subtree:add_le(update_count, buffer(1,4))
     
