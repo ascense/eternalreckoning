@@ -1,5 +1,6 @@
 [client]
 server-address = "127.0.0.1:6142"
+field-of-view = 68.0
 
 [key-map]
 move-forward = 17
@@ -16,6 +17,8 @@ file = "client.log"
 sensitivity = 3.15
 
 [simulation]
-gravity = 0.48
 movement-speed = 6.0
 jump-force = 10.35
+
+[simulation.physics]
+gravity = 0.48
