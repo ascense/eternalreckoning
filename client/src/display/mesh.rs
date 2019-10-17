@@ -3,14 +3,14 @@ use failure::format_err;
 
 #[derive(Clone, Debug)]
 pub struct Mesh {
-    vertices: Vec<[f32; 3]>,
-    colors: Option<Vec<[f32; 4]>>,
-    pub indices: Option<Vec<u32>>,
+    pub vertices: Vec<rendy::mesh::PosTex>,
+    pub indices: Vec<u32>,
 }
 
 pub struct MeshBuilder {
-    vertices: Option<Vec<[f32; 3]>>,
-    colors: Option<Vec<[f32; 4]>>,
+    vertices: Option<Vec<rendy::mesh::Position>>,
+    colors: Option<Vec<rendy::mesh::Color>>,
+    uvs: Option<Vec<rendy::mesh::TexCoord>>,
     indices: Option<Vec<u32>>,
 }
 
@@ -20,41 +20,18 @@ impl Mesh {
     }
 }
 
-impl std::convert::Into<Vec<rendy::mesh::PosColor>> for Mesh {
-    fn into(self) -> Vec<rendy::mesh::PosColor> {
-        let mut res = Vec::with_capacity(self.vertices.len());
-
-        for index in 0..self.vertices.len() {
-            let position = (self.vertices.get(index).unwrap()).clone().into();
-            let color: _;
-
-            match self.colors {
-                None => {
-                    color = [0.5, 0.5, 0.5, 1.0].into();
-                },
-                Some(ref colors) => {
-                    color = (colors.get(index).unwrap()).clone().into();
-                },
-            }
-
-            res.push(rendy::mesh::PosColor { position, color });
-        }
-
-        res
-    }
-}
-
 impl MeshBuilder {
     pub fn new() -> MeshBuilder {
         MeshBuilder {
             vertices: None,
             colors: None,
+            uvs: None,
             indices: None,
         }
     }
 
     pub fn with_vertices(
-        mut self, vertices: &[[f32; 3]]
+        mut self, vertices: &[rendy::mesh::Position]
     ) -> MeshBuilder {
         let mut vert_vec = Vec::with_capacity(vertices.len());
         for vert in vertices {
@@ -66,7 +43,7 @@ impl MeshBuilder {
     }
 
     pub fn with_colors(
-        mut self, colors: &[[f32; 4]]
+        mut self, colors: &[rendy::mesh::Color]
     ) -> MeshBuilder {
         let mut col_vec = Vec::with_capacity(colors.len());
         for col in colors {
@@ -89,16 +66,43 @@ impl MeshBuilder {
         self
     }
 
+    pub fn with_uvs(
+        mut self, uvs: &[rendy::mesh::TexCoord]
+    ) -> MeshBuilder {
+        let mut uv_vec = Vec::with_capacity(uvs.len());
+        for uv in uvs {
+            uv_vec.push(uv.clone());
+        }
+        self.uvs = Some(uv_vec);
+
+        self
+    }
+
 
     pub fn build(self) -> Result<Mesh, Error> {
         if self.vertices.is_none() {
             return Err(format_err!("cannot build a mesh without vertex data"));
         }
+        if self.uvs.is_none() {
+            return Err(format_err!("cannot build a mesh without UV data"));
+        }
+        if self.indices.is_none() {
+            return Err(format_err!("cannot build a mesh without index data"));
+        }
+
+        let source = self.vertices.unwrap();
+        let uv_source = self.uvs.unwrap();
+        let mut vertices = Vec::with_capacity(source.len());
+        for index in 0..source.len() {
+            let position = source.get(index).unwrap().clone();
+            let tex_coord = uv_source.get(index).unwrap().clone();
+
+            vertices.push(rendy::mesh::PosTex { position, tex_coord });
+        }
 
         Ok(Mesh {
-           vertices: self.vertices.unwrap(),
-           colors: self.colors,
-           indices: self.indices,
+           vertices,
+           indices: self.indices.unwrap(),
         })
     }
 }

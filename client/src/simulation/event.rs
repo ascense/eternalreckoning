@@ -21,16 +21,12 @@ pub enum InputEvent {
 }
 
 #[derive(Clone)]
-pub struct Update {
-    pub time: std::time::Instant,
-    pub event: UpdateEvent,
-}
-
-#[derive(Clone)]
-pub enum UpdateEvent {
+pub enum Update {
+    SimulationTick(std::time::Instant),
     CameraUpdate(CameraUpdate),
     ModelUpdate(ModelUpdate),
     PositionUpdate(PositionUpdate),
+    TextureUpdate(TextureUpdate),
 }
 
 #[derive(Clone)]
@@ -41,6 +37,12 @@ pub struct ModelUpdate {
     pub entity: specs::Entity,
     pub path: String,
     pub offset: Option<nalgebra::Vector3<f32>>,
+}
+
+#[derive(Clone)]
+pub struct TextureUpdate {
+    pub entity: specs::Entity,
+    pub path: String,
 }
 
 #[derive(Clone)]

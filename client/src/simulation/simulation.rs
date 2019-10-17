@@ -8,6 +8,7 @@ use specs::{
 use futures::sync::mpsc::UnboundedSender;
 
 use crate::input::MouseEuler;
+use crate::loaders::heightmap_from_bmp;
 use super::event::{
     Event,
     Update,
@@ -21,6 +22,7 @@ use super::component::{
     Name,
     Position,
     ServerID,
+    Texture,
     Velocity,
 };
 use super::resource::{
@@ -88,15 +90,17 @@ pub fn build_simulation<'a, 'b>(
     world.register::<Name>();
     world.register::<Position>();
     world.register::<ServerID>();
+    world.register::<Texture>();
     world.register::<Velocity>();
 
     // Floor collision plane
     world.create_entity()
-        .with(Position(nalgebra::Point3::new(0.0, 0.0, 0.0)))
-        .with(Collider::new(collider::ColliderType::Plane(
-            -nalgebra::Vector3::y_axis()
+        .with(Position(nalgebra::Point3::new(-64.0, 5.0, -64.0)))
+        .with(Collider::new(collider::ColliderType::HeightMap(
+            heightmap_from_bmp("assets/terrain.bmp", 25.5).unwrap()
         )))
-        .with(Model::new("assets/floor.erm"))
+        .with(Model::new("assets/terrain.bmp"))
+        .with(Texture::new("assets/stone.png"))
         .build();
 
     // Player
@@ -112,36 +116,41 @@ pub fn build_simulation<'a, 'b>(
             path: "assets/marker.erm".to_string(),
             offset: Some(nalgebra::Vector3::new(0.0, 1.0, 0.0))
         })
+        .with(Texture::new("assets/marker.png"))
         .build();
 
     world.insert(ActiveCamera(Some(player)));
     world.insert(ActiveCharacter(Some(player)));
 
     world.create_entity()
-        .with(Position(nalgebra::Point3::new(-5.5, -1.0, -7.0)))
+        .with(Position(nalgebra::Point3::new(-8.0, -1.1, 16.0)))
         .with(Model {
             path: "assets/pillar.erm".to_string(),
             offset: Some(nalgebra::Vector3::new(0.0, 1.0, 0.0))
         })
+        .with(Texture::new("assets/pillar.png"))
         .with(Collider::new(collider::ColliderType::Sphere(1.0)))
         .build();
 
+    /*
     world.create_entity()
-        .with(Position(nalgebra::Point3::new(5.5, -1.0, -7.0)))
-        .with(Model {
-            path: "assets/pillar.erm".to_string(),
-            offset: Some(nalgebra::Vector3::new(0.0, 1.0, 0.0))
-        })
-        .with(Collider::new(collider::ColliderType::Sphere(1.0)))
-        .build();
-
-    world.create_entity()
-        .with(Position(nalgebra::Point3::new(0.0, -0.5, -9.0)))
+        .with(Position(nalgebra::Point3::new(-11.0, -0.8, 13.0)))
         .with(Model {
             path: "assets/elf-spear.erm".to_string(),
             offset: Some(nalgebra::Vector3::new(0.0, 0.5, 0.0))
         })
         .with(Collider::new(collider::ColliderType::Sphere(0.5)))
+        .build();
+    */
+
+    world.create_entity()
+        .with(Position(nalgebra::Point3::new(-14.0, -1.2, 10.0)))
+        .with(Model {
+            path: "assets/pillar.erm".to_string(),
+            offset: Some(nalgebra::Vector3::new(0.0, 1.0, 0.0))
+        })
+        .with(Texture::new("assets/pillar.png"))
+        .with(Collider::new(collider::ColliderType::Sphere(1.0)))
         .build();
 
     let dispatcher = DispatcherBuilder::new()

@@ -203,6 +203,7 @@ def write_file(
 
                     mesh_verts = mesh.vertices[:]
                     mesh_colors = mesh.vertex_colors[:]
+                    mesh_uvs = mesh.uv_layers.active.data
 
                     if len(mesh.polygons) + len(mesh_verts) <= 0:
                         bpy.data.meshes.remove(mesh)
@@ -234,9 +235,16 @@ def write_file(
                     # Write vertex indices
                     obj_indices = 0
                     for face in mesh.polygons:
-                        for vert in face.vertices:
-                            fw(get_binary_u64(totverts + mesh_verts[vert].index))
+                        for loop_index in face.loop_indices:
+                            fw(get_binary_u64(totverts + mesh.loops[loop_index].vertex_index))
                             obj_indices += 1
+
+                    # Write UVs
+                    for face in mesh.polygons:
+                        for loop_index in face.loop_indices:
+                            uv = mesh_uvs[loop_index].uv
+                            fw(get_binary_f64(uv[0]))
+                            fw(get_binary_f64(uv[1]))
 
                     # indices done
                     mesh_progress.step()

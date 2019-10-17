@@ -17,6 +17,7 @@ impl Default for LoggingConfig {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum LogLevel {
     Error,
     Warn,

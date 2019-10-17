@@ -3,18 +3,21 @@ use std::sync::mpsc::Sender;
 use futures::sync::mpsc::UnboundedSender;
 use specs::prelude::*;
 
+use eternalreckoning_core::simulation::TickTime;
+
 use super::super::{
     component::{
         Model,
         Position,
         ServerID,
+        Texture,
     },
     event::{
         Update,
-        UpdateEvent,
         PositionUpdate,
         CameraUpdate,
         ModelUpdate,
+        TextureUpdate,
     },
     resource::{
         ActiveCamera,
@@ -24,85 +27,101 @@ use super::super::{
 
 pub struct UpdateSender {
     sender: Sender<Update>,
-    net_sender: UnboundedSender<Update>,
+    net_sender: Option<UnboundedSender<Update>>,
 }
 
 impl UpdateSender {
     pub fn new(sender: Sender<Update>, net_sender: UnboundedSender<Update>)
         -> UpdateSender
     {
-        UpdateSender { sender, net_sender }
+        UpdateSender { sender, net_sender: Some(net_sender) }
+    }
+}
+
+impl UpdateSender {
+    fn send_event(&self, event: Update) {
+        self.sender.send(event)
+            .unwrap_or_else(|err| {
+                log::error!("failed to send update event: {}", err);
+            });
     }
 }
 
 impl<'a> System<'a> for UpdateSender {
     type SystemData = (
         Entities<'a>,
+        Read<'a, TickTime>,
         Read<'a, ActiveCamera>,
         Read<'a, ActiveCharacter>,
         ReadStorage<'a, Model>,
         ReadStorage<'a, Position>,
         ReadStorage<'a, ServerID>,
+        ReadStorage<'a, Texture>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (entities, camera, character, model, pos, id) = data;
+        let (
+            entities,
+            tick_time,
+            camera,
+            character,
+            model,
+            pos,
+            id,
+            texture
+        ) = data;
 
-        let time = std::time::Instant::now();
+        // TODO: main loop sender hangup should be fatal
+
+        self.send_event(Update::SimulationTick(tick_time.0));
 
         for (ent, pos) in (&entities, &pos).join() {
             if Some(ent) == camera.0 {
-                self.sender.send(Update {
-                    event: UpdateEvent::CameraUpdate(
-                        CameraUpdate(pos.0.clone())
-                    ),
-                    time,
-                })
-                    .unwrap_or_else(|err| {
-                        log::error!("failed to send update event: {}", err);
-                    });
+                self.send_event(Update::CameraUpdate(
+                    CameraUpdate(pos.0.clone())
+                ));
             }
 
-            let event = Update {
-                event: UpdateEvent::PositionUpdate(
-                    PositionUpdate {
-                        entity: ent,
-                        uuid: match id.get(ent) {
-                            Some(uuid) => Some(uuid.0),
-                            None => None,
-                        },
-                        position: pos.0.clone(),
-                    }
-                ),
-                time,
-            };
+            let event = Update::PositionUpdate(
+                PositionUpdate {
+                    entity: ent,
+                    uuid: match id.get(ent) {
+                        Some(uuid) => Some(uuid.0),
+                        None => None,
+                    },
+                    position: pos.0.clone(),
+                }
+            );
 
-            self.sender.send(event.clone()).unwrap_or_else(|err| {
-                log::error!("failed to send update event: {}", err);
-            });
+            self.send_event(event.clone());
 
-            if character.0.is_some() && ent == character.0.unwrap() {
-                self.net_sender.unbounded_send(event).unwrap_or_else(|err| {
-                    log::error!("failed to send update event: {}", err);
-                });
+            if let Some(net_sender) = &self.net_sender {
+                if character.0.is_some() && ent == character.0.unwrap() {
+                    net_sender.unbounded_send(event).unwrap_or_else(|err| {
+                        log::error!("failed to send update event: {}", err);
+                        self.net_sender = None;
+                    });
+                }
             }
         }
 
         for (ent, model) in (&entities, &model).join() {
-            let event = Update {
-                event: UpdateEvent::ModelUpdate(
-                    ModelUpdate {
-                        entity: ent,
-                        path: model.path.clone(),
-                        offset: model.offset,
-                    }
-                ),
-                time,
-            };
+            self.send_event(Update::ModelUpdate(
+                ModelUpdate {
+                    entity: ent,
+                    path: model.path.clone(),
+                    offset: model.offset,
+                }
+            ));
+        }
 
-            self.sender.send(event).unwrap_or_else(|err| {
-                log::error!("failed to send update event: {}", err);
-            });
+        for (ent, tex) in (&entities, &texture).join() {
+            self.send_event(Update::TextureUpdate(
+                TextureUpdate {
+                    entity: ent,
+                    path: tex.path.clone(),
+                }
+            ));
         }
     }
 }

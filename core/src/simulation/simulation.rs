@@ -7,6 +7,8 @@ use specs::{
     WorldExt,
 };
 
+use super::TickTime;
+
 pub struct Simulation<'a, 'b, T: std::marker::Send + Sync> {
     dispatcher: Dispatcher<'a, 'b>,
     world: World,
@@ -18,6 +20,7 @@ impl<'a, 'b, T: 'static + std::marker::Send + Sync> Simulation<'a, 'b, T> {
         -> Simulation<'a, 'b, T>
     {
         world.insert::<Vec<T>>(Vec::new());
+        world.insert(TickTime::default());
 
         dispatcher.setup(&mut world);
 
@@ -38,7 +41,14 @@ impl<'a, 'b, T: 'static + std::marker::Send + Sync> Simulation<'a, 'b, T> {
         (*queue).clear();
     }
 
-    pub fn next_tick(&mut self) {
+    fn set_tick_time(&mut self, time: std::time::Instant) {
+        let mut tick_time = self.world.write_resource::<TickTime>();
+        tick_time.0 = time;
+    }
+
+    pub fn next_tick(&mut self, tick_time: std::time::Instant) {
+        self.set_tick_time(tick_time);
+
         self.dispatcher.dispatch(&mut self.world);
         self.world.maintain();
 
@@ -61,7 +71,7 @@ impl<'a, 'b, T: 'static + std::marker::Send + Sync> Simulation<'a, 'b, T> {
                 }
             }
 
-            self.next_tick();
+            self.next_tick(next_frame);
 
             next_frame = next_frame + tick_length;
         }
