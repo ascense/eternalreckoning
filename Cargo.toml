@@ -3,5 +3,7 @@
 members = [
     "core",
     "client",
+    "lobby",
     "server",
+    "subscription",
 ]
