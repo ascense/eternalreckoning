@@ -1,5 +1,4 @@
 use std::cell::{
-    Ref,
     RefCell,
 };
 use std::rc;
@@ -31,7 +30,7 @@ pub struct Tree {
     screen_size: ScreenSize,
     textures: Vec<rc::Weak<String>>,
     components: Vec<rc::Weak<RefCell<ModelComponent>>>,
-    root: rc::Rc<RefCell<ModelComponent>>,
+    _root: rc::Rc<RefCell<ModelComponent>>,
 }
 
 impl Tree {
@@ -73,7 +72,7 @@ impl Tree {
             screen_size,
             components,
             textures,
-            root: root.clone(),
+            _root: root.clone(),
         };
 
         for child in element.children {
@@ -106,13 +105,25 @@ impl Tree {
         Tree {
             screen_size,
             components,
-            root,
+            _root: root,
             textures: Vec::new(),
         }
     }
 
+    pub fn width(&self) -> f64 {
+        self.screen_size.width
+    }
+
+    pub fn height(&self) -> f64 {
+        self.screen_size.height
+    }
+
     pub fn iter(&self) -> std::slice::Iter<rc::Weak<RefCell<ModelComponent>>> {
         self.components.iter()
+    }
+
+    pub fn iter_textures(&self) -> std::slice::Iter<rc::Weak<String>> {
+        self.textures.iter()
     }
 
     fn render(
