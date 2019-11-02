@@ -4,11 +4,11 @@ use specs::{
     World,
     WorldExt,
 };
+use uuid::Uuid;
 
-use crate::action::{
-    ActionEvent,
-    Update,
-};
+use eternalreckoning_core::net::operation::Operation;
+
+use super::Event;
 use super::component::{
     Client,
     Health,
@@ -23,7 +23,10 @@ use super::system::{
 
 use eternalreckoning_core::simulation::Simulation;
 
-pub fn build_simulation<'a, 'b>(update_tx: UnboundedSender<Update>) -> Simulation<'a, 'b, ActionEvent> {
+pub fn build_simulation<'a, 'b>(
+    net_tx: UnboundedSender<(Uuid, Operation)>,
+) -> Simulation<'a, 'b, Event>
+{
     let mut world = World::new();
 
     world.register::<Client>();
@@ -34,7 +37,7 @@ pub fn build_simulation<'a, 'b>(update_tx: UnboundedSender<Update>) -> Simulatio
     let dispatcher = DispatcherBuilder::new()
         .with(Connections, "connections", &[])
         .with(PlayerMovement, "player_movement", &[])
-        .with(UpdateSender::new(update_tx), "update_sender", &["player_movement"])
+        .with(UpdateSender::new(net_tx), "update_sender", &["player_movement"])
         .build();
 
     Simulation::new(dispatcher, world)

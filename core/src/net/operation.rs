@@ -1,4 +1,5 @@
 use std::fmt::{
+    Debug,
     Display,
     Formatter,
 };
@@ -21,6 +22,12 @@ impl Display for Operation {
             Operation::SvUpdateWorld(_) => "(server) world update",
             Operation::ClMoveSetPosition(_) => "(client) player movement",
         })
+    }
+}
+
+impl Debug for Operation {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        Display::fmt(&self, f)
     }
 }
 

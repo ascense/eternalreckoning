@@ -1,13 +1,18 @@
-use std::time::Duration;
-use std::thread;
 use std::sync::mpsc::{
     channel,
+    TryRecvError,
 };
+use std::time::Duration;
+use std::thread;
 
-use failure::Error;
+use failure::{
+    format_err,
+    Error,
+};
 use futures::sync::mpsc::unbounded;
 
-use crate::game::build_simulation;
+use crate::simulation::build_simulation;
+use crate::simulation::Event;
 use crate::networking::Server;
 use crate::util::config::Config;
 
@@ -28,21 +33,36 @@ impl Default for ServerConfig {
 }
 
 pub fn main(config: Config) -> Result<(), Error> {
-    let (event_tx, event_rx) = channel();
-    let (update_tx, update_rx) = unbounded();
+    let (outbound_tx, outbound_rx) = unbounded();
+    let (inbound_tx, inbound_rx) = channel();
 
     let addr = config.server.bind_address.clone();
     thread::spawn(move || {
         let server = Server::new();
-        server.run(&addr, update_rx, event_tx);
+        server.run(&addr, outbound_rx, inbound_tx);
     });
 
     let tick_length = Duration::from_millis(
         1000 / config.server.tick_rate
     );
 
-    let mut game = build_simulation(update_tx);
-    game.run(event_rx, tick_length);
+    let mut game = build_simulation(outbound_tx);
+
+    game.run(
+        move || {
+            match inbound_rx.try_recv() {
+                Ok((uuid, op)) => {
+                    Ok(Some(Event { uuid, op }))
+                },
+                Err(TryRecvError::Empty) => Ok(None),
+                Err(TryRecvError::Disconnected) => Err(()),
+            }
+        },
+        tick_length
+    )
+        .map_err(|_| {
+            format_err!("Network thread disconnected")
+        })?;
 
     Ok(())
 }
