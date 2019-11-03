@@ -35,6 +35,7 @@ fn main() {
 
             if let Operation::SvConnectResponse(operation::SvConnectResponse { uuid }) = op.0 {
                 println!("Connected with UUID {}", uuid);
+                eprintln!("Result: OK");
             } else {
                 panic!("Invalid response from server");
             }

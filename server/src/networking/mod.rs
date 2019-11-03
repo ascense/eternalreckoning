@@ -1,3 +1,4 @@
+mod error;
 mod server;
 mod state;
 mod reader;

@@ -20,6 +20,7 @@ use eternalreckoning_core::net::{
     operation::Operation,
 };
 
+use super::error::NetworkError;
 use super::state::SharedState;
 
 pub type Rx = futures::sync::mpsc::UnboundedReceiver<(Uuid, Operation)>;
@@ -86,17 +87,27 @@ impl Writer {
 
 impl Future for Writer {
     type Item = ();
-    type Error = Error;
+    type Error = NetworkError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), NetworkError> {
         loop {
             match self.state {
                 WriterState::Sending => {
-                    futures::try_ready!(self.poll_sending());
+                    futures::try_ready!(
+                        self.poll_sending()
+                            .map_err(|err| NetworkError::FatalError(
+                                format_err!("Writer error: {}", err)
+                            ))
+                    );
                     self.state = WriterState::Idle;
                 },
                 WriterState::Idle => {
-                    futures::try_ready!(self.poll_idle());
+                    futures::try_ready!(
+                        self.poll_idle()
+                            .map_err(|err| NetworkError::FatalError(
+                                format_err!("Writer error: {}", err)
+                            ))
+                    );
                     self.state = WriterState::Sending;
                 },
             }

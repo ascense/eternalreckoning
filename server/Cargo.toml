@@ -14,6 +14,7 @@ eternalreckoning-core = { version = "0.1.4", path = "../core" }
 
 bytes = "0.4"
 failure = "0.1"
+failure_derive = "0.1"
 futures = "0.1"
 log = "0.4"
 nalgebra = "0.19"

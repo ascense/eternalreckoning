@@ -1,8 +1,14 @@
+use std::time::{
+    Duration,
+    Instant,
+};
+
 use specs::prelude::*;
 
 use eternalreckoning_core::net::operation::{
     Operation,
 };
+use eternalreckoning_core::simulation::TickTime;
 
 use super::super::{
     component::{
@@ -13,11 +19,20 @@ use super::super::{
     EventQueue,
 };
 
-pub struct Connections;
+pub struct Connections {
+    ttl: Duration,
+}
+
+impl Connections {
+    pub fn new(ttl: Duration) -> Connections {
+        Connections { ttl }
+    }
+}
 
 impl<'a> System<'a> for Connections {
     type SystemData = (
         Entities<'a>,
+        Read<'a, TickTime>,
         Read<'a, EventQueue>,
         WriteStorage<'a, Client>,
         WriteStorage<'a, Id>,
@@ -25,7 +40,14 @@ impl<'a> System<'a> for Connections {
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (entities, events, mut clients, mut ids, mut positions) = data;
+        let (
+            entities,
+            tick_time,
+            events,
+            mut clients,
+            mut ids,
+            mut positions,
+        ) = data;
 
         for event in &*events {
             match event.op {
@@ -44,7 +66,7 @@ impl<'a> System<'a> for Connections {
                             None
                         });
 
-                    clients.insert(client, Client::new())
+                    clients.insert(client, Client::new(Instant::now() + self.ttl))
                         .unwrap_or_else(|err| {
                             log::error!(
                                 "Failed to add state for client {}: {}",
@@ -66,22 +88,46 @@ impl<'a> System<'a> for Connections {
                             None
                         });
                 },
+                Operation::ClSync(_) => {
+                    for (id, client) in (&ids, &mut clients).join() {
+                        if id.0 == event.uuid {
+                            client.lifetime = tick_time.0 + self.ttl;
+                            break;
+                        }
+                    }
+                },
+                Operation::ClMoveSetPosition(_) => {
+                    for (id, client) in (&ids, &mut clients).join() {
+                        if id.0 == event.uuid {
+                            client.lifetime = tick_time.0 + self.ttl;
+                            break;
+                        }
+                    }
+                },
+                Operation::DisconnectMessage => {
+                    for (id, client) in (&ids, &mut clients).join() {
+                        if id.0 == event.uuid {
+                            client.lifetime = tick_time.0;
+                            break;
+                        }
+                    }
+                },
                 _ => (),
             }
         }
 
-        /*
-        TODO
-        ConnectionEvent::ClientDisconnected(uuid) => {
-            log::info!("Client disconnected: {:?}", uuid);
-
-            for (entity, client) in (&entities, &clients).join() {
-                if &client.0 == uuid {
-                    entities.delete(entity);
-                    break;
-                }
+        for (entity, id, client) in (&entities, &ids, &clients).join() {
+            if client.lifetime <= tick_time.0 {
+                log::info!("Client disconnected: {}", id.0);
+                entities.delete(entity)
+                    .unwrap_or_else(|err| {
+                        log::error!(
+                            "Failed to drop disconnected client {}: {}",
+                            id.0,
+                            err
+                        );
+                    });
             }
-        },
-        */
+        }
     }
 }

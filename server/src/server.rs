@@ -21,6 +21,7 @@ use crate::util::config::Config;
 pub struct ServerConfig {
     pub tick_rate: u64,
     pub bind_address: String,
+    pub client_ttl_ms: u64,
 }
 
 impl Default for ServerConfig {
@@ -28,6 +29,7 @@ impl Default for ServerConfig {
         ServerConfig {
             tick_rate: 60,
             bind_address: "127.0.0.1:6142".to_string(),
+            client_ttl_ms: 500,
         }
     }
 }
@@ -46,7 +48,10 @@ pub fn main(config: Config) -> Result<(), Error> {
         1000 / config.server.tick_rate
     );
 
-    let mut game = build_simulation(outbound_tx);
+    let mut game = build_simulation(
+        outbound_tx,
+        config.server.client_ttl_ms
+    );
 
     game.run(
         move || {

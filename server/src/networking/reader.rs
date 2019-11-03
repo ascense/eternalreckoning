@@ -22,6 +22,7 @@ use eternalreckoning_core::net::{
     operation::Operation,
 };
 
+use super::error::NetworkError;
 use super::state::SharedState;
 
 pub type Tx = Sender<(Uuid, Operation)>;
@@ -49,7 +50,15 @@ impl Reader {
             })?;
 
         if let Some(id) = shared.addr_to_id.get(&addr) {
-            self.tx.send((*id, op))
+            let id = *id;
+            match op {
+                Operation::DisconnectMessage => {
+                    shared.addr_to_id.remove(&addr);
+                    shared.id_to_addr.remove(&id);
+                },
+                _ => (),
+            }
+            self.tx.send((id, op))
                 .map_err(|err| {
                     format_err!("Communication failure: {}", err)
                 })?;
@@ -78,17 +87,29 @@ impl Reader {
 
 impl Future for Reader {
     type Item = ();
-    type Error = Error;
+    type Error = NetworkError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
-        while let Async::Ready(frame) = self.stream.poll()? {
-            if let Some((op, addr)) = frame {
-                self.receive(addr, op)?;
-            } else {
-                return Err(format_err!("Connection closed"));
+    fn poll(&mut self) -> Poll<(), NetworkError> {
+        loop {
+            match self.stream.poll() {
+                Ok(Async::NotReady) => {
+                    return Ok(Async::NotReady);
+                },
+                Ok(Async::Ready(Some((op, addr)))) => {
+                    self.receive(addr, op)
+                        .map_err(|err| NetworkError::FatalError(
+                            format_err!("Reader error: {}", err)
+                        ))?;
+                },
+                Ok(Async::Ready(None)) => {
+                    return Err(NetworkError::RebuildRequired);
+                },
+                Err(err) => {
+                    return Err(NetworkError::FatalError(
+                        format_err!("Reader error: {}", err)
+                    ));
+                }
             }
         }
-
-        Ok(Async::NotReady)
     }
 }

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use specs::prelude::*;
 
 #[derive(Copy, Clone)]
@@ -8,6 +10,7 @@ pub enum ClientState {
 
 pub struct Client {
     pub state: ClientState,
+    pub lifetime: Instant,
 }
 
 impl Component for Client {
@@ -15,7 +18,7 @@ impl Component for Client {
 }
 
 impl Client {
-    pub fn new() -> Client {
-        Client { state: ClientState::Connecting }
+    pub fn new(lifetime: Instant) -> Client {
+        Client { state: ClientState::Connecting, lifetime }
     }
 }

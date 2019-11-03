@@ -26,10 +26,10 @@ impl UpdateSender {
 
     fn send_connection_response<'a>(
         &self,
-        entities: &Entities<'a>,
+        _entities: &Entities<'a>,
         ids: &ReadStorage<'a, Id>,
-        pos: &ReadStorage<'a, Position>,
-        health: &ReadStorage<'a, Health>,
+        _pos: &ReadStorage<'a, Position>,
+        _health: &ReadStorage<'a, Health>,
         clients: &mut WriteStorage<'a, Client>,
         entity: Entity
     ) {

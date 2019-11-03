@@ -1,10 +1,11 @@
 [client]
-server-address = "127.0.0.1:6142"
+server-address = "localhost:6142"
 tick-rate = 60
 
 [display]
 display-mode = "windowed"
 field-of-view = 68.0
+forward-interpolate = 0.5
 
 [key-map]
 move-forward = 17
