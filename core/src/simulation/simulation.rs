@@ -1,5 +1,4 @@
 use std::time::{ Duration, Instant };
-use std::sync::mpsc::Receiver;
 
 use specs::{
     Dispatcher,
@@ -55,7 +54,15 @@ impl<'a, 'b, T: 'static + std::marker::Send + Sync> Simulation<'a, 'b, T> {
         self.clear_events();
     }
 
-    pub fn run(&mut self, receiver: Receiver<T>, tick_length: Duration) {
+    pub fn run<F>(
+        &mut self,
+        mut receiver: F,
+        tick_length: Duration,
+    ) -> Result<(), ()>
+    where
+        F: FnMut() -> Result<Option<T>, ()>,
+        F: 'static,
+    {
         let mut next_frame = Instant::now();
 
         loop {
@@ -64,10 +71,10 @@ impl<'a, 'b, T: 'static + std::marker::Send + Sync> Simulation<'a, 'b, T> {
             }
 
             loop {
-                let event = receiver.try_recv();
-                match event {
-                    Ok(e) => self.push_event(e),
-                    Err(_) => break,
+                match receiver() {
+                    Ok(Some(e)) => self.push_event(e),
+                    Ok(None) => break,
+                    Err(_) => return Err(()),
                 }
             }
 

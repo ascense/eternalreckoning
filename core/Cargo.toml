@@ -1,6 +1,6 @@
 [package]
 name = "eternalreckoning-core"
-version = "0.1.4"
+version = "0.2.0"
 authors = ["Henry Carlson <henry.carlson@gmail.com>"]
 edition = "2018"
 
@@ -10,6 +10,7 @@ chrono = "0.4"
 failure = "0.1"
 failure_derive = "0.1"
 fern = "0.5"
+lazy_static = "~1.4"
 log = "0.4"
 nalgebra = "0.19"
 serde = { version = "1.0", features = ["derive"] }

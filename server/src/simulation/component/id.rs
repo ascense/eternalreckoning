@@ -1,8 +1,8 @@
 use specs::prelude::*;
 use uuid::Uuid;
 
-pub struct Client(pub Uuid);
+pub struct Id(pub Uuid);
 
-impl Component for Client {
+impl Component for Id {
     type Storage = VecStorage<Self>;
 }

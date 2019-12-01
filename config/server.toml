@@ -2,5 +2,5 @@
 level = "debug"
 
 [server]
-tick-rate = 60
+tick-rate = 30
 bind-address = "127.0.0.1:6142"
